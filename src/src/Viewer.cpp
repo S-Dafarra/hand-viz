@@ -164,9 +164,9 @@ int main(int argc, char** argv)
     bool closing = false;
     handleSignals([&](){closing = true;});
 
-    if (argc < 7)
+    if (argc < 6)
     {
-        std::cout << "Synopsis: robmo-icub-viz <blocking> <robot_name> <hand_laterality> <use_fingers> <use_analogs> <hand_fk>" << std::endl;
+        std::cout << "Synopsis: robmo-icub-viz <blocking> <robot_name> <use_fingers> <use_analogs> <hand_fk>" << std::endl;
         std::cout << "          Camera name <camera> is required only if <point_cloud> = true." << std::endl;
         return EXIT_FAILURE;
     }
@@ -178,12 +178,11 @@ int main(int argc, char** argv)
     if (std::string(argv[1]) == "true")
         blocking = true;
     const std::string robot_name = std::string(argv[2]);
-    const std::string hand_laterality = std::string(argv[3]);
-    if (std::string(argv[4]) == "true")
+    if (std::string(argv[3]) == "true")
         use_fingers = true;
-    if (std::string(argv[5]) == "true")
+    if (std::string(argv[4]) == "true")
         use_analogs = true;
-    if (std::string(argv[6]) == "true")
+    if (std::string(argv[5]) == "true")
         show_hand_fk = true;
 
     double fps = 30.0;
@@ -194,12 +193,12 @@ int main(int argc, char** argv)
     /* Show hand according to forward kinematics. */
     if (show_hand_fk)
     {
-        std::shared_ptr<VtkContent> hand = std::shared_ptr<VtkiCubHand>
-        (
-            new VtkiCubHand(robot_name, hand_laterality, "test-visualization/hand_fk", use_fingers, use_analogs, {100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0)
-        );
-        leftEyeContainer.add_content("hand_fk", hand);
-        rightEyeContainer.add_content("hand_fk", hand);
+        std::shared_ptr<VtkContent> leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", "test-visualization/hand_fk/left", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
+        std::shared_ptr<VtkContent> rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", "test-visualization/hand_fk/right", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
+        leftEyeContainer.add_content("hand_fk_l", leftHand);
+        rightEyeContainer.add_content("hand_fk_l", leftHand);
+        leftEyeContainer.add_content("hand_fk_r", rightHand);
+        rightEyeContainer.add_content("hand_fk_r", rightHand);
     }
 
     yarp::sig::FlexImage yarpImage;
