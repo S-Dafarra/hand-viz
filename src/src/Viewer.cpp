@@ -164,26 +164,17 @@ int main(int argc, char** argv)
     bool closing = false;
     handleSignals([&](){closing = true;});
 
-    if (argc < 6)
+    if (argc < 2)
     {
-        std::cout << "Synopsis: robmo-icub-viz <blocking> <robot_name> <use_fingers> <use_analogs> <hand_fk>" << std::endl;
-        std::cout << "          Camera name <camera> is required only if <point_cloud> = true." << std::endl;
+        std::cout << "Synopsis: icub-hand-viz <robot_name>" << std::endl;
         return EXIT_FAILURE;
     }
-    bool blocking = false;
-    bool use_fingers = false;
-    bool use_analogs = false;
-    bool show_hand_fk = false;
+    const std::string robot_name = std::string(argv[1]);
 
-    if (std::string(argv[1]) == "true")
-        blocking = true;
-    const std::string robot_name = std::string(argv[2]);
-    if (std::string(argv[3]) == "true")
-        use_fingers = true;
-    if (std::string(argv[4]) == "true")
-        use_analogs = true;
-    if (std::string(argv[5]) == "true")
-        show_hand_fk = true;
+    bool blocking = false;
+    bool use_fingers = true;
+    bool use_analogs = false;
+
 
     double fps = 30.0;
     VtkContainer leftEyeContainer(1.0 / fps, 600, 600, blocking);
@@ -191,15 +182,14 @@ int main(int argc, char** argv)
 
 
     /* Show hand according to forward kinematics. */
-    if (show_hand_fk)
-    {
-        std::shared_ptr<VtkContent> leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", "test-visualization/hand_fk/left", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
-        std::shared_ptr<VtkContent> rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", "test-visualization/hand_fk/right", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
-        leftEyeContainer.add_content("hand_fk_l", leftHand);
-        rightEyeContainer.add_content("hand_fk_l", leftHand);
-        leftEyeContainer.add_content("hand_fk_r", rightHand);
-        rightEyeContainer.add_content("hand_fk_r", rightHand);
-    }
+    std::shared_ptr<VtkiCubHand> leftHand;
+    std::shared_ptr<VtkiCubHand> rightHand;
+    leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", "test-visualization/hand_fk/left", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
+    rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", "test-visualization/hand_fk/right", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
+    leftEyeContainer.add_content("hand_fk_l", leftHand);
+    rightEyeContainer.add_content("hand_fk_l", leftHand);
+    leftEyeContainer.add_content("hand_fk_r", rightHand);
+    rightEyeContainer.add_content("hand_fk_r", rightHand);
 
     yarp::sig::FlexImage yarpImage;
     yarp::os::BufferedPort<yarp::sig::FlexImage> leftEyeOutputPort, rightEyeOutputPort;
@@ -212,15 +202,16 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-//    container.run();
+    double interCameraDistance = 0.07;
 
     leftEyeContainer.initialize();
-    leftEyeContainer.setOrientationWidgetEnabled(true);
+    leftEyeContainer.setOrientationWidgetEnabled(false);
     leftEyeContainer.render_window()->SetAlphaBitPlanes(1);
 //    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
     leftEyeContainer.renderer()->SetBackground(0, 0, 0);
     leftEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
-    leftEyeContainer.camera()->SetPosition(-0.5, 0.035, 0.0);
+    leftEyeContainer.camera()->SetPosition(0.0, interCameraDistance/2, 0.0);
+    leftEyeContainer.camera()->SetFocalPoint(1.0, interCameraDistance/2, 0.0);
 
 
     rightEyeContainer.initialize();
@@ -229,7 +220,9 @@ int main(int argc, char** argv)
 //    rightEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
     rightEyeContainer.renderer()->SetBackground(0, 0, 0);
     rightEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
-    rightEyeContainer.camera()->SetPosition(-0.5, -0.035, 0.0);
+    rightEyeContainer.camera()->SetPosition(0.0, -interCameraDistance/2, 0.0);
+    rightEyeContainer.camera()->SetFocalPoint(1.0, -interCameraDistance/2, 0.0);
+
 
     vtkNew<vtkWindowToImageFilter> rightScreenshot;
     rightScreenshot->SetInputBufferTypeToRGBA();
@@ -238,14 +231,29 @@ int main(int argc, char** argv)
     leftScreenshot->SetInputBufferTypeToRGBA();
     leftScreenshot->SetInput(leftEyeContainer.render_window());
 
+    Eigen::Matrix4d leftTransform;
+    leftTransform << 0.0,  0.0,  1.0, 1.0,
+                     0.0, -1.0,  0.0, 0.1,
+                     1.0,  0.0,  0.0, 0.0,
+                     0.0,  0.0,  0.0, 1.0;
+
+    leftHand->setTransform(leftTransform);
+
+    Eigen::Matrix4d rightTransform;
+    rightTransform << 0.0,  0.0, -1.0,  1.0,
+                      0.0,  1.0,  0.0, -0.1,
+                      1.0,  0.0,  0.0,  0.0,
+                      0.0,  0.0,  0.0,  1.0;
+    rightHand->setTransform(rightTransform);
 
     while(!closing)
     {
-        leftEyeContainer.updateContent();
+        leftEyeContainer.updateContent(); //the content is shared between the two
 
         leftEyeContainer.render();
         rightEyeContainer.render();
 
+        leftScreenshot->Modified(); //to update the screenshot
         leftScreenshot->Update();
         vtkImageDataToYarpimage(leftScreenshot->GetOutput(), yarpImage);
 
@@ -254,6 +262,7 @@ int main(int argc, char** argv)
         imageLeftToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
         leftEyeOutputPort.write();
 
+        rightScreenshot->Modified(); //to update the screenshot
         rightScreenshot->Update();
         vtkImageDataToYarpimage(rightScreenshot->GetOutput(), yarpImage);
 
