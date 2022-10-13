@@ -187,43 +187,81 @@ int main(int argc, char** argv)
         show_hand_fk = true;
 
     double fps = 30.0;
-    VtkContainer container(1.0 / fps, 600, 600, blocking);
+    VtkContainer leftEyeContainer(1.0 / fps, 600, 600, blocking);
+    VtkContainer rightEyeContainer(1.0 / fps, 600, 600, blocking);
+
 
     /* Show hand according to forward kinematics. */
     if (show_hand_fk)
     {
-        std::unique_ptr<VtkContent> hand = std::unique_ptr<VtkiCubHand>
+        std::shared_ptr<VtkContent> hand = std::shared_ptr<VtkiCubHand>
         (
             new VtkiCubHand(robot_name, hand_laterality, "test-visualization/hand_fk", use_fingers, use_analogs, {100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0)
         );
-        container.add_content("hand_fk", std::move(hand));
+        leftEyeContainer.add_content("hand_fk", hand);
+        rightEyeContainer.add_content("hand_fk", hand);
     }
 
     yarp::sig::FlexImage yarpImage;
-    yarp::os::BufferedPort<yarp::sig::FlexImage> outputPort;
-    if (!outputPort.open("/hand-visualizer/" + hand_laterality + "/image"))
+    yarp::os::BufferedPort<yarp::sig::FlexImage> leftEyeOutputPort, rightEyeOutputPort;
+    if (!leftEyeOutputPort.open("/hand-visualizer/left/image"))
+    {
+        return EXIT_FAILURE;
+    }
+    if (!rightEyeOutputPort.open("/hand-visualizer/right/image"))
     {
         return EXIT_FAILURE;
     }
 
-    container.initialize();
-    container.setOrientationWidgetEnabled(false);
-    container.render_window()->SetAlphaBitPlanes(1);
-    container.renderer()->SetBackground(0, 0, 0);
+//    container.run();
+
+    leftEyeContainer.initialize();
+    leftEyeContainer.setOrientationWidgetEnabled(true);
+    leftEyeContainer.render_window()->SetAlphaBitPlanes(1);
+//    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
+    leftEyeContainer.renderer()->SetBackground(0, 0, 0);
+    leftEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
+    leftEyeContainer.camera()->SetPosition(-0.5, 0.035, 0.0);
+
+
+    rightEyeContainer.initialize();
+    rightEyeContainer.setOrientationWidgetEnabled(false);
+    rightEyeContainer.render_window()->SetAlphaBitPlanes(1);
+//    rightEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
+    rightEyeContainer.renderer()->SetBackground(0, 0, 0);
+    rightEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
+    rightEyeContainer.camera()->SetPosition(-0.5, -0.035, 0.0);
+
+    vtkNew<vtkWindowToImageFilter> rightScreenshot;
+    rightScreenshot->SetInputBufferTypeToRGBA();
+    rightScreenshot->SetInput(rightEyeContainer.render_window());
+    vtkNew<vtkWindowToImageFilter> leftScreenshot;
+    leftScreenshot->SetInputBufferTypeToRGBA();
+    leftScreenshot->SetInput(leftEyeContainer.render_window());
+
+
     while(!closing)
     {
-        container.update();
-        vtkNew<vtkWindowToImageFilter> w2if ;
-        w2if->SetInputBufferTypeToRGBA();
-        w2if->SetInput(container.render_window());
-        w2if->Update();
-        vtkImageDataToYarpimage(w2if->GetOutput(), yarpImage);
+        leftEyeContainer.updateContent();
 
-        yarp::sig::FlexImage& imageToBeSent = outputPort.prepare();
-        imageToBeSent.setPixelCode(yarpImage.getPixelCode());
-        imageToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
-        outputPort.write();
+        leftEyeContainer.render();
+        rightEyeContainer.render();
 
+        leftScreenshot->Update();
+        vtkImageDataToYarpimage(leftScreenshot->GetOutput(), yarpImage);
+
+        yarp::sig::FlexImage& imageLeftToBeSent = leftEyeOutputPort.prepare();
+        imageLeftToBeSent.setPixelCode(yarpImage.getPixelCode());
+        imageLeftToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
+        leftEyeOutputPort.write();
+
+        rightScreenshot->Update();
+        vtkImageDataToYarpimage(rightScreenshot->GetOutput(), yarpImage);
+
+        yarp::sig::FlexImage& imageRightToBeSent = rightEyeOutputPort.prepare();
+        imageRightToBeSent.setPixelCode(yarpImage.getPixelCode());
+        imageRightToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
+        rightEyeOutputPort.write();
     }
 
     return EXIT_SUCCESS;
