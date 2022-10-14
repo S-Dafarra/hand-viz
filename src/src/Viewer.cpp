@@ -184,8 +184,8 @@ int main(int argc, char** argv)
     /* Show hand according to forward kinematics. */
     std::shared_ptr<VtkiCubHand> leftHand;
     std::shared_ptr<VtkiCubHand> rightHand;
-    leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", "test-visualization/hand_fk/left", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
-    rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", "test-visualization/hand_fk/right", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0);
+    leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", "test-visualization/hand_fk/left", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0, false);
+    rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", "test-visualization/hand_fk/right", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0, false);
     leftEyeContainer.add_content("hand_fk_l", leftHand);
     rightEyeContainer.add_content("hand_fk_l", leftHand);
     leftEyeContainer.add_content("hand_fk_r", rightHand);
@@ -233,7 +233,7 @@ int main(int argc, char** argv)
 
     Eigen::Matrix4d leftTransform;
     leftTransform << 0.0,  0.0,  1.0, 1.0,
-                     0.0, -1.0,  0.0, 0.1,
+                     0.0, -1.0,  0.0, 0.05,
                      1.0,  0.0,  0.0, 0.0,
                      0.0,  0.0,  0.0, 1.0;
 
@@ -241,7 +241,7 @@ int main(int argc, char** argv)
 
     Eigen::Matrix4d rightTransform;
     rightTransform << 0.0,  0.0, -1.0,  1.0,
-                      0.0,  1.0,  0.0, -0.1,
+                      0.0,  1.0,  0.0, -0.05,
                       1.0,  0.0,  0.0,  0.0,
                       0.0,  0.0,  0.0,  1.0;
     rightHand->setTransform(rightTransform);
