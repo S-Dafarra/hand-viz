@@ -28,6 +28,8 @@
 #include <yarp/os/LogStream.h>
 #include <yarp/sig/Image.h>
 #include <yarp/os/BufferedPort.h>
+#include <yarp/dev/PolyDriver.h>
+#include <yarp/dev/IFrameTransform.h>
 
 using namespace RobotsIO::Camera;
 using namespace RobotsViz;
@@ -156,6 +158,27 @@ void vtkImageDataToYarpimage(vtkImageData* imageData, yarp::sig::FlexImage& imag
     }
 }
 
+Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input)
+{
+    if (input.rows() != 4 && input.cols() != 4)
+    {
+        yError() << "The input yarp matrix is not a 4 by 4.";
+        return Eigen::Matrix4d::Identity();
+    }
+
+    Eigen::Matrix4d output;
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        for (size_t j = 0; j < 4; ++j)
+        {
+            output(i,j) = input[i][j];
+        }
+    }
+
+    return output;
+}
+
 
 int main(int argc, char** argv)
 {
@@ -174,9 +197,62 @@ int main(int argc, char** argv)
     bool blocking = false;
     bool use_fingers = true;
     bool use_analogs = false;
+    std::string head_frame = "head";
+    std::string left_frame = "l_hand";
+    std::string right_frame = "r_hand";
+    double interCameraDistance = 0.07;
+
+    Eigen::Matrix4d headToLeftEye;
+    headToLeftEye << 1.0,  0.0,  0.0, 0.0,
+                     0.0,  1.0,  0.0, interCameraDistance/2,
+                     0.0,  0.0,  1.0, 0.0,
+                     0.0,  0.0,  0.0, 1.0;
+
+
+
+    Eigen::Matrix4d headToRightEye;
+    headToRightEye << 1.0,  0.0,  0.0, 0.0,
+                      0.0,  1.0,  0.0, -interCameraDistance/2,
+                      0.0,  0.0,  1.0, 0.0,
+                      0.0,  0.0,  0.0, 1.0;
+
+    Eigen::Matrix4d leftFrameToHand;
+    leftFrameToHand << 0.0, -1.0,  0.0, 0.0,
+                       0.0,  0.0,  1.0, 0.0,
+                      -1.0,  0.0,  0.0, 0.0,
+                       0.0,  0.0,  0.0, 1.0;
+
+
+    Eigen::Matrix4d rightFrameToHand;
+    rightFrameToHand << 0.0, -1.0,  0.0, 0.0,
+                        0.0,  0.0,  1.0, 0.0,
+                       -1.0,  0.0,  0.0, 0.0,
+                        0.0,  0.0,  0.0, 1.0;
 
 
     double fps = 30.0;
+
+
+
+    yarp::dev::PolyDriver       ddtransformclient;
+    yarp::dev::IFrameTransform       *iframetrans{nullptr};
+
+    yarp::os::Property pTransformclient_cfg;
+    pTransformclient_cfg.put("device", "transformClient");
+    pTransformclient_cfg.put("local", "/hand-visualizer/transformClient");
+    pTransformclient_cfg.put("remote",  "/transformServer");
+
+    bool ok_client = ddtransformclient.open(pTransformclient_cfg);
+    if (!ok_client)
+    {
+        yError()<<"Problem in opening the transformClient device";
+        yError()<<"Is the transformServer YARP device running?";
+    }
+    if (ok_client && !ddtransformclient.view(iframetrans))
+    {
+        yError()<<"IFrameTransform I/F is not implemented";
+    }
+
     VtkContainer leftEyeContainer(1.0 / fps, 600, 600, blocking);
     VtkContainer rightEyeContainer(1.0 / fps, 600, 600, blocking);
 
@@ -202,7 +278,6 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    double interCameraDistance = 0.07;
 
     leftEyeContainer.initialize();
     leftEyeContainer.setOrientationWidgetEnabled(false);
@@ -210,8 +285,8 @@ int main(int argc, char** argv)
 //    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
     leftEyeContainer.renderer()->SetBackground(0, 0, 0);
     leftEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
-    leftEyeContainer.camera()->SetPosition(0.0, interCameraDistance/2, 0.0);
-    leftEyeContainer.camera()->SetFocalPoint(1.0, interCameraDistance/2, 0.0);
+    leftEyeContainer.camera()->SetPosition(headToLeftEye(0, 3) - 1.0, headToLeftEye(1, 3), headToLeftEye(2, 3));
+    leftEyeContainer.camera()->SetFocalPoint(headToLeftEye(0, 3), headToLeftEye(1, 3), headToLeftEye(2, 3));
 
 
     rightEyeContainer.initialize();
@@ -220,8 +295,8 @@ int main(int argc, char** argv)
 //    rightEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
     rightEyeContainer.renderer()->SetBackground(0, 0, 0);
     rightEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
-    rightEyeContainer.camera()->SetPosition(0.0, -interCameraDistance/2, 0.0);
-    rightEyeContainer.camera()->SetFocalPoint(1.0, -interCameraDistance/2, 0.0);
+    rightEyeContainer.camera()->SetPosition(headToRightEye(0, 3) - 1.0, headToRightEye(1, 3), headToRightEye(2, 3));
+    rightEyeContainer.camera()->SetFocalPoint(headToRightEye(0, 3), headToRightEye(1, 3), headToRightEye(2, 3));
 
 
     vtkNew<vtkWindowToImageFilter> rightScreenshot;
@@ -246,8 +321,42 @@ int main(int argc, char** argv)
                       0.0,  0.0,  0.0,  1.0;
     rightHand->setTransform(rightTransform);
 
+
+    yarp::sig::Matrix leftTransformYarp, rightTransformYarp;
+
+    leftTransformYarp.resize(4,4);
+    leftTransformYarp.eye();
+
+    rightTransformYarp.resize(4,4);
+    rightTransformYarp.eye();
+
+
     while(!closing)
     {
+
+        if (iframetrans)
+        {
+            if (iframetrans->canTransform(left_frame, head_frame))
+            {
+                if (iframetrans->getTransform(left_frame, head_frame, leftTransformYarp))
+                {
+                    leftTransform = toEigen(leftTransformYarp) * leftFrameToHand;
+                }
+            }
+
+            if (iframetrans->canTransform(right_frame, head_frame))
+            {
+                if (iframetrans->getTransform(right_frame, head_frame, rightTransformYarp))
+                {
+                    rightTransform = toEigen(rightTransformYarp) * rightFrameToHand;
+                }
+            }
+        }
+
+        leftHand->setTransform(leftTransform);
+        rightHand->setTransform(rightTransform);
+
+
         leftEyeContainer.updateContent(); //the content is shared between the two
 
         leftEyeContainer.render();
@@ -271,6 +380,10 @@ int main(int argc, char** argv)
         imageRightToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
         rightEyeOutputPort.write();
     }
+
+    //TODO
+    //- Get the transforms from the walking
+    //- Configuration parameters
 
     return EXIT_SUCCESS;
 }

@@ -27,6 +27,8 @@ set(${EXE_TARGET_NAME}_SRC
 add_executable(${EXE_TARGET_NAME} ${${EXE_TARGET_NAME}_HDR} ${${EXE_TARGET_NAME}_SRC})
 
 target_link_libraries(${EXE_TARGET_NAME}
+                      YARP::YARP_os
+                      YARP::YARP_dev
                       RobotsIO::RobotsIO
                       RobotsViz::RobotsViz
 )
