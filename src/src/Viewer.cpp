@@ -194,6 +194,8 @@ int main(int argc, char** argv)
     }
     const std::string robot_name = std::string(argv[1]);
 
+    std::string name = "hand-visualizer";
+
     bool blocking = false;
     bool use_fingers = true;
     bool use_analogs = false;
@@ -201,19 +203,11 @@ int main(int argc, char** argv)
     std::string left_frame = "l_hand";
     std::string right_frame = "r_hand";
 
-    Eigen::Matrix4d headToLeftEye;
-    headToLeftEye << 1.0,  0.0,  0.0,  0.051,
-                     0.0,  1.0,  0.0,  0.034,
-                     0.0,  0.0,  1.0,  0.013,
-                     0.0,  0.0,  0.0,    1.0;
+    Eigen::Vector3d headToLeftEye;
+    headToLeftEye << 0.051, 0.034, 0.013;
 
-
-
-    Eigen::Matrix4d headToRightEye;
-    headToRightEye << 1.0,  0.0,  0.0,  0.051,
-                      0.0,  1.0,  0.0, -0.034,
-                      0.0,  0.0,  1.0,  0.013,
-                      0.0,  0.0,  0.0,    1.0;
+    Eigen::Vector3d headToRightEye;
+    headToRightEye <<  0.051, -0.034, 0.013;
 
     Eigen::Matrix4d leftFrameToHand;
     leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
@@ -229,17 +223,30 @@ int main(int argc, char** argv)
                         0.0,  0.0,  0.0,  1.0;
 
 
+    double viewAngle = 85;
+
     double fps = 30.0;
 
+    Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
+    Eigen::Vector3d upDirection = Eigen::Vector3d::UnitZ();
 
+
+    std::tuple<double, double, double> handColor{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0};
+    double handOpacity = 1.0;
+
+    bool useAbduction = false;
+    int windowWidth = 600;
+    int windowHeight = 600;
+
+    std::string tfRemote = "/transformServer";
 
     yarp::dev::PolyDriver       ddtransformclient;
     yarp::dev::IFrameTransform       *iframetrans{nullptr};
 
     yarp::os::Property pTransformclient_cfg;
     pTransformclient_cfg.put("device", "transformClient");
-    pTransformclient_cfg.put("local", "/hand-visualizer/transformClient");
-    pTransformclient_cfg.put("remote",  "/transformServer");
+    pTransformclient_cfg.put("local", "/" + name + "/transformClient");
+    pTransformclient_cfg.put("remote",  tfRemote);
 
     bool ok_client = ddtransformclient.open(pTransformclient_cfg);
     if (!ok_client)
@@ -252,15 +259,15 @@ int main(int argc, char** argv)
         yError()<<"IFrameTransform I/F is not implemented";
     }
 
-    VtkContainer leftEyeContainer(1.0 / fps, 600, 600, blocking);
-    VtkContainer rightEyeContainer(1.0 / fps, 600, 600, blocking);
+    VtkContainer leftEyeContainer(1.0 / fps, windowWidth, windowHeight, blocking);
+    VtkContainer rightEyeContainer(1.0 / fps, windowWidth, windowHeight, blocking);
 
 
     /* Show hand according to forward kinematics. */
     std::shared_ptr<VtkiCubHand> leftHand;
     std::shared_ptr<VtkiCubHand> rightHand;
-    leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", "test-visualization/hand_fk/left", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0, false);
-    rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", "test-visualization/hand_fk/right", use_fingers, use_analogs, std::tuple<double, double, double>{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0}, 1.0, false);
+    leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", name + "/hand_fk/left", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
+    rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", name + "/hand_fk/right", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
     leftEyeContainer.add_content("hand_fk_l", leftHand);
     rightEyeContainer.add_content("hand_fk_l", leftHand);
     leftEyeContainer.add_content("hand_fk_r", rightHand);
@@ -268,11 +275,11 @@ int main(int argc, char** argv)
 
     yarp::sig::FlexImage yarpImage;
     yarp::os::BufferedPort<yarp::sig::FlexImage> leftEyeOutputPort, rightEyeOutputPort;
-    if (!leftEyeOutputPort.open("/hand-visualizer/left/image"))
+    if (!leftEyeOutputPort.open("/" + name + "/left/image"))
     {
         return EXIT_FAILURE;
     }
-    if (!rightEyeOutputPort.open("/hand-visualizer/right/image"))
+    if (!rightEyeOutputPort.open("/" + name + "/right/image"))
     {
         return EXIT_FAILURE;
     }
@@ -283,9 +290,12 @@ int main(int argc, char** argv)
     leftEyeContainer.render_window()->SetAlphaBitPlanes(1);
 //    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
     leftEyeContainer.renderer()->SetBackground(0, 0, 0);
-    leftEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
-    leftEyeContainer.camera()->SetPosition(headToLeftEye(0, 3) - 1.0, headToLeftEye(1, 3), headToLeftEye(2, 3));
-    leftEyeContainer.camera()->SetFocalPoint(headToLeftEye(0, 3), headToLeftEye(1, 3), headToLeftEye(2, 3));
+    leftEyeContainer.camera()->SetViewUp(upDirection(0), upDirection(1), upDirection(2));
+    leftEyeContainer.camera()->SetPosition(headToLeftEye(0), headToLeftEye(1), headToLeftEye(2));
+    leftEyeContainer.camera()->SetFocalPoint(headToLeftEye(0) + forwardDirection(0),
+                                             headToLeftEye(1) + forwardDirection(1),
+                                             headToLeftEye(2) + forwardDirection(2));
+    leftEyeContainer.camera()->SetViewAngle(viewAngle);
 
 
     rightEyeContainer.initialize();
@@ -293,9 +303,12 @@ int main(int argc, char** argv)
     rightEyeContainer.render_window()->SetAlphaBitPlanes(1);
 //    rightEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
     rightEyeContainer.renderer()->SetBackground(0, 0, 0);
-    rightEyeContainer.camera()->SetViewUp(0.0, 0.0, 1.0);
-    rightEyeContainer.camera()->SetPosition(headToRightEye(0, 3) - 1.0, headToRightEye(1, 3), headToRightEye(2, 3));
-    rightEyeContainer.camera()->SetFocalPoint(headToRightEye(0, 3), headToRightEye(1, 3), headToRightEye(2, 3));
+    rightEyeContainer.camera()->SetViewUp(upDirection(0), upDirection(1), upDirection(2));
+    rightEyeContainer.camera()->SetPosition(headToRightEye(0), headToRightEye(1), headToRightEye(2));
+    rightEyeContainer.camera()->SetFocalPoint(headToRightEye(0) + forwardDirection(0),
+                                              headToRightEye(1) + forwardDirection(1),
+                                              headToRightEye(2) + forwardDirection(2));
+    rightEyeContainer.camera()->SetViewAngle(viewAngle);
 
 
     vtkNew<vtkWindowToImageFilter> rightScreenshot;
