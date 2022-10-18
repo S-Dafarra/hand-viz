@@ -200,34 +200,33 @@ int main(int argc, char** argv)
     std::string head_frame = "head";
     std::string left_frame = "l_hand";
     std::string right_frame = "r_hand";
-    double interCameraDistance = 0.07;
 
     Eigen::Matrix4d headToLeftEye;
-    headToLeftEye << 1.0,  0.0,  0.0, 0.0,
-                     0.0,  1.0,  0.0, interCameraDistance/2,
-                     0.0,  0.0,  1.0, 0.0,
-                     0.0,  0.0,  0.0, 1.0;
+    headToLeftEye << 1.0,  0.0,  0.0,  0.051,
+                     0.0,  1.0,  0.0,  0.034,
+                     0.0,  0.0,  1.0,  0.013,
+                     0.0,  0.0,  0.0,    1.0;
 
 
 
     Eigen::Matrix4d headToRightEye;
-    headToRightEye << 1.0,  0.0,  0.0, 0.0,
-                      0.0,  1.0,  0.0, -interCameraDistance/2,
-                      0.0,  0.0,  1.0, 0.0,
-                      0.0,  0.0,  0.0, 1.0;
+    headToRightEye << 1.0,  0.0,  0.0,  0.051,
+                      0.0,  1.0,  0.0, -0.034,
+                      0.0,  0.0,  1.0,  0.013,
+                      0.0,  0.0,  0.0,    1.0;
 
     Eigen::Matrix4d leftFrameToHand;
-    leftFrameToHand << 0.0, -1.0,  0.0, 0.0,
-                       0.0,  0.0,  1.0, 0.0,
-                      -1.0,  0.0,  0.0, 0.0,
-                       0.0,  0.0,  0.0, 1.0;
+    leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
+                       0.0,  0.0,  1.0, -0.018,
+                      -1.0,  0.0,  0.0, -0.059,
+                       0.0,  0.0,  0.0,  1.0;
 
 
     Eigen::Matrix4d rightFrameToHand;
-    rightFrameToHand << 0.0, -1.0,  0.0, 0.0,
-                        0.0,  0.0,  1.0, 0.0,
-                       -1.0,  0.0,  0.0, 0.0,
-                        0.0,  0.0,  0.0, 1.0;
+    rightFrameToHand << 0.0, -1.0,  0.0, -0.002,
+                        0.0,  0.0,  1.0,  0.018,
+                       -1.0,  0.0,  0.0, -0.059,
+                        0.0,  0.0,  0.0,  1.0;
 
 
     double fps = 30.0;
@@ -380,10 +379,6 @@ int main(int argc, char** argv)
         imageRightToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
         rightEyeOutputPort.write();
     }
-
-    //TODO
-    //- Get the transforms from the walking
-    //- Configuration parameters
 
     return EXIT_SUCCESS;
 }
