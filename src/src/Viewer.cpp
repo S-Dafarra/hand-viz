@@ -192,6 +192,8 @@ int main(int argc, char** argv)
         std::cout << "Synopsis: icub-hand-viz <robot_name>" << std::endl;
         return EXIT_FAILURE;
     }
+
+    //------------Parameters---------------
     const std::string robot_name = std::string(argv[1]);
 
     std::string name = "hand-visualizer";
@@ -210,20 +212,31 @@ int main(int argc, char** argv)
     headToRightEye <<  0.051, -0.034, 0.013;
 
     Eigen::Matrix4d leftFrameToHand;
-    leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
+//    leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
+//                       0.0,  0.0,  1.0, -0.018,
+//                      -1.0,  0.0,  0.0, -0.059,
+//                       0.0,  0.0,  0.0,  1.0;
+    leftFrameToHand << 0.0, -1.0,  0.0,  0.025,
                        0.0,  0.0,  1.0, -0.018,
-                      -1.0,  0.0,  0.0, -0.059,
+                      -1.0,  0.0,  0.0, -0.055,
                        0.0,  0.0,  0.0,  1.0;
+    leftFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * leftFrameToHand.block<3,3>(0,0);
 
 
     Eigen::Matrix4d rightFrameToHand;
-    rightFrameToHand << 0.0, -1.0,  0.0, -0.002,
-                        0.0,  0.0,  1.0,  0.018,
-                       -1.0,  0.0,  0.0, -0.059,
+//    rightFrameToHand << 0.0, -1.0,  0.0, -0.002,
+//                        0.0,  0.0,  1.0,  0.018,
+//                       -1.0,  0.0,  0.0, -0.059,
+//                        0.0,  0.0,  0.0,  1.0;
+    rightFrameToHand << 0.0, -1.0,  0.0,  0.010,
+                        0.0,  0.0,  1.0,  0.010,
+                       -1.0,  0.0,  0.0, -0.050,
                         0.0,  0.0,  0.0,  1.0;
+    rightFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * rightFrameToHand.block<3,3>(0,0);
 
 
-    double viewAngle = 85;
+
+    double viewAngle = 37;
 
     double fps = 30.0;
 
@@ -232,13 +245,16 @@ int main(int argc, char** argv)
 
 
     std::tuple<double, double, double> handColor{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0};
-    double handOpacity = 1.0;
+    double handOpacity = 0.2;
 
     bool useAbduction = false;
-    int windowWidth = 600;
-    int windowHeight = 600;
+    int windowWidth = 320;
+    int windowHeight = 240;
 
     std::string tfRemote = "/transformServer";
+
+    //------------------------------------------
+
 
     yarp::dev::PolyDriver       ddtransformclient;
     yarp::dev::IFrameTransform       *iframetrans{nullptr};
