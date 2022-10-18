@@ -17,6 +17,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include <vtkWindowToImageFilter.h>
 #include <vtkNew.h>
@@ -179,9 +180,116 @@ Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input)
     return output;
 }
 
+class HandVisualizer
+{
+public:
+
+    struct Settings
+    {
+        double fps{30};
+        unsigned int width{600};
+        unsigned int height{600};
+        bool blocking{false};
+        std::tuple<double, double, double> backgroundColor{0,0,0};
+        Eigen::Vector3d cameraPosition = Eigen::Vector3d::Zero();
+        Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
+        Eigen::Vector3d upDirection = Eigen::Vector3d::UnitZ();
+        double viewAngle{85};
+    };
+
+private:
+
+    std::unordered_map<std::string, std::shared_ptr<VtkiCubHand>> m_hands;
+    std::unique_ptr<VtkContainer> m_vtkContainer{nullptr};
+    vtkNew<vtkWindowToImageFilter> m_screenshot;
+    yarp::sig::FlexImage m_yarpImage;
+    Settings m_settings;
+
+public:
+
+
+
+    bool initialize(const Settings& settings)
+    {
+        if (m_vtkContainer)
+        {
+            yError() << "[HandVisualizer::initialize] The initialize method had been already called.";
+            return false;
+        }
+
+        m_settings = settings;
+        m_vtkContainer = std::make_unique<VtkContainer>(1/m_settings.fps, m_settings.width, m_settings.height, m_settings.blocking);
+
+        return true;
+    }
+
+    bool addHand(const std::string& name, std::shared_ptr<VtkiCubHand> hand)
+    {
+        if (!m_vtkContainer)
+        {
+            yError() << "[HandVisualizer::addHand] The initialize method had not been called yet.";
+            return false;
+        }
+
+        if (m_hands.find(name) != m_hands.end())
+        {
+            yError() << "[HandVisualizer::addHand] The hand named" << name << "already exists";
+            return false;
+        }
+
+        if (!hand)
+        {
+            yError() << "[HandVisualizer::addHand] The input hand pointer is not valid.";
+            return false;
+        }
+
+        m_hands[name] = hand;
+        m_vtkContainer->add_content(name, hand);
+        return true;
+    }
+
+    bool prepareVisualization()
+    {
+        if (!m_vtkContainer)
+        {
+            yError() << "[HandVisualizer::prepareVisualization] The initialize method had not been called yet.";
+            return false;
+        }
+
+        m_vtkContainer->initialize();
+        m_vtkContainer->setOrientationWidgetEnabled(false);
+        m_vtkContainer->render_window()->SetAlphaBitPlanes(1);
+    //    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
+        m_vtkContainer->renderer()->SetBackground(std::get<0>(m_settings.backgroundColor),
+                                                  std::get<1>(m_settings.backgroundColor),
+                                                  std::get<2>(m_settings.backgroundColor));
+        m_vtkContainer->camera()->SetViewUp(m_settings.upDirection(0), m_settings.upDirection(1), m_settings.upDirection(2));
+        m_vtkContainer->camera()->SetPosition(m_settings.cameraPosition(0), m_settings.cameraPosition(1), m_settings.cameraPosition(2));
+        m_vtkContainer->camera()->SetFocalPoint(m_settings.cameraPosition(0) + m_settings.forwardDirection(0),
+                                                m_settings.cameraPosition(1) + m_settings.forwardDirection(1),
+                                                m_settings.cameraPosition(2) + m_settings.forwardDirection(2));
+        m_vtkContainer->camera()->SetViewAngle(m_settings.viewAngle);
+        m_screenshot->SetInputBufferTypeToRGBA();
+        m_screenshot->SetInput(m_vtkContainer->render_window());
+
+        return true;
+    }
+
+
+
+};
+
 
 int main(int argc, char** argv)
 {
+    //TODO
+    //Get the parameters from configuration file
+    //RPC
+    //Test the analog readings
+    //Cleanup of the code (separate main, reuse code for left and right)
+    //Allowing using only one hand and only one camera
+    //Test on windows
+
     yarp::os::Network yarp; //to initialize the network
 
     bool closing = false;
