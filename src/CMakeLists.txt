@@ -18,13 +18,19 @@ find_package(YARP REQUIRED COMPONENTS
              eigen # seems that RobotsIO export is not working on Ubuntu18.04
 )
 
-set(${EXE_TARGET_NAME}_HDR)
+set(${EXE_TARGET_NAME}_HDR
+    include/Eye.h
+    include/HandsVisualizer.h)
 
 set(${EXE_TARGET_NAME}_SRC
-    src/Viewer.cpp
+    src/Eye.cpp
+    src/HandsVisualizer.cpp
+    src/main.cpp
 )
 
 add_executable(${EXE_TARGET_NAME} ${${EXE_TARGET_NAME}_HDR} ${${EXE_TARGET_NAME}_SRC})
+
+target_include_directories(${EXE_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 target_link_libraries(${EXE_TARGET_NAME}
                       YARP::YARP_os
