@@ -26,28 +26,55 @@
 class HandsVisualizer
 {
 
-    yarp::dev::PolyDriver       ddtransformclient;
-    yarp::dev::IFrameTransform       *iframetrans{nullptr};
-    std::shared_ptr<RobotsViz::VtkiCubHand> leftHand;
-    std::shared_ptr<RobotsViz::VtkiCubHand> rightHand;
-    Eye leftEye;
-    Eye rightEye;
-    yarp::os::BufferedPort<yarp::sig::FlexImage> leftEyeOutputPort, rightEyeOutputPort;
-    Eigen::Matrix4d leftTransform;
-    Eigen::Matrix4d rightTransform;
-    std::string head_frame;
-    std::string left_frame;
-    std::string right_frame;
-    yarp::sig::Matrix leftTransformYarp, rightTransformYarp;
-    Eigen::Matrix4d leftFrameToHand;
-    Eigen::Matrix4d rightFrameToHand;
-    bool blocking;
+    class Settings
+    {
+        Eigen::Vector3d parse3DVector(const yarp::os::Searchable& rf, const std::string& key, const Eigen::Vector3d& defaultValue);
+
+        Eigen::Quaterniond parseQuaternion(const yarp::os::Searchable& rf, const std::string& key, const Eigen::Quaterniond& defaultValue);
+
+    public:
+        std::string robot_name;
+        std::string name;
+        bool blocking;
+        bool use_fingers;
+        bool use_analogs;
+        bool filterAbduction;
+        std::string head_frame;
+        std::string left_frame;
+        std::string right_frame;
+        double viewAngle;
+        double fps;
+        double handOpacity;
+        Eigen::Vector3d handColor;
+        Eigen::Vector3d backgroundColor;
+        int windowWidth;
+        int windowHeight;
+        std::string tfRemote;
+        Eigen::Vector3d headToLeftEye;
+        Eigen::Vector3d headToRightEye;
+        Eigen::Vector3d forwardDirection;
+        Eigen::Vector3d upDirection;
+        Eigen::Matrix4d leftFrameToHand;
+        Eigen::Matrix4d rightFrameToHand;
+
+        void parse(const yarp::os::Searchable& rf);
+
+        std::string toString(size_t indentation);
+    };
+
+    yarp::dev::PolyDriver m_ddtransformclient;
+    yarp::dev::IFrameTransform *m_iframetrans{nullptr};
+    std::shared_ptr<RobotsViz::VtkiCubHand> m_leftHand;
+    std::shared_ptr<RobotsViz::VtkiCubHand> m_rightHand;
+    Eye m_leftEye;
+    Eye m_rightEye;
+    yarp::os::BufferedPort<yarp::sig::FlexImage> m_leftEyeOutputPort, m_rightEyeOutputPort;
+    Eigen::Matrix4d m_leftTransform;
+    Eigen::Matrix4d m_rightTransform;
+    yarp::sig::Matrix m_leftTransformYarp, m_rightTransformYarp;
+    Settings m_settings;
 
     Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input);
-
-    Eigen::Vector3d parse3DVector(const yarp::os::ResourceFinder& rf, const std::string& key, const Eigen::Vector3d& defaultValue);
-
-    Eigen::Quaterniond parseQuaternion(const yarp::os::ResourceFinder& rf, const std::string& key, const Eigen::Quaterniond& defaultValue);
 
 public:
 
