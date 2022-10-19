@@ -9,6 +9,7 @@
 #include <HandsVisualizer.h>
 
 #include <yarp/os/LogStream.h>
+#include <sstream>
 
 Eigen::Matrix4d HandsVisualizer::toEigen(const yarp::sig::Matrix &input)
 {
@@ -31,61 +32,160 @@ Eigen::Matrix4d HandsVisualizer::toEigen(const yarp::sig::Matrix &input)
     return output;
 }
 
+Eigen::Vector3d HandsVisualizer::parse3DVector(const yarp::os::ResourceFinder &rf, const std::string &key, const Eigen::Vector3d &defaultValue)
+{
+    if (!rf.check(key))
+    {
+        return defaultValue;
+    }
+
+    yarp::os::Value& value = rf.find(key);
+
+    if (!value.isList())
+    {
+        yWarning() << key << "found in the configuration parameters, but it is not a list. Using default value.";
+        return defaultValue;
+    }
+
+    yarp::os::Bottle* list = value.asList();
+
+    if (list->size() != 3)
+    {
+        yWarning() << key << "found in the configuration parameters, but it is not a list with three elements. Using default value.";
+        return defaultValue;
+    }
+
+    Eigen::Vector3d output;
+
+    for (size_t i = 0; i < 3; ++i)
+    {
+        if (!list->get(i).isFloat64() && !list->get(i).isInt32() && !list->get(i).isInt64())
+        {
+            yWarning() << "The element of" << key << "at position" << i << "is not numeric. Using default value.";
+            return defaultValue;
+        }
+        output(i) = list->get(i).asFloat64();
+    }
+
+    return output;
+}
+
+Eigen::Quaterniond HandsVisualizer::parseQuaternion(const yarp::os::ResourceFinder &rf, const std::string &key, const Eigen::Quaterniond &defaultValue)
+{
+    if (!rf.check(key))
+    {
+        return defaultValue;
+    }
+
+    yarp::os::Value& value = rf.find(key);
+
+    if (!value.isList())
+    {
+        yWarning() << key << "found in the configuration parameters, but it is not a list. Using default value.";
+        return defaultValue;
+    }
+
+    yarp::os::Bottle* list = value.asList();
+
+    if (list->size() != 4)
+    {
+        yWarning() << key << "found in the configuration parameters, but it is not a list with four elements. Using default value.";
+        return defaultValue;
+    }
+
+    Eigen::Quaterniond output;
+
+    for (size_t i = 0; i < 4; ++i)
+    {
+        if (!list->get(i).isFloat64() && !list->get(i).isInt32() && !list->get(i).isInt64())
+        {
+            yWarning() << "The element of" << key << "at position" << i << "is not numeric. Using default value.";
+            return defaultValue;
+        }
+    }
+
+    output.w() = list->get(0).asFloat64();
+    output.x() = list->get(1).asFloat64();
+    output.y() = list->get(2).asFloat64();
+    output.z() = list->get(3).asFloat64();
+
+    return output;
+}
+
 bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
 {
     //------------Parameters---------------
-    std::string robot_name = "icubSim";
-    std::string name = "hand-visualizer";
-    blocking = false;
-    bool use_fingers = true;
-    bool use_analogs = false;
-    bool useAbduction = false;
-    head_frame = "head";
-    left_frame = "l_hand";
-    right_frame = "r_hand";
+    std::string robot_name = rf.check("robot", yarp::os::Value("icub")).asString();
+    std::string name = rf.check("name", yarp::os::Value("hand-visualizer")).asString();
+    blocking = rf.check("blocking") && (rf.find("blocking").isNull() || rf.find("blocking").asBool());
+    bool use_fingers = rf.check("use_fingers") && (rf.find("use_fingers").isNull() || rf.find("use_fingers").asBool());
+    bool use_analogs = rf.check("use_analogs") && (rf.find("use_analogs").isNull() || rf.find("use_analogs").asBool());
+    bool filterAbduction = rf.check("filter_abduction") && (rf.find("filter_abduction").isNull() || rf.find("filter_abduction").asBool());
+    head_frame = rf.check("head_frame", yarp::os::Value("head")).asString();
+    left_frame = rf.check("left_frame", yarp::os::Value("l_hand")).asString();
+    right_frame = rf.check("right_frame", yarp::os::Value("r_hand")).asString();
+    double viewAngle = rf.check("view_angle", yarp::os::Value(85.0)).asFloat64();
+    double fps = rf.check("desired_fps", yarp::os::Value(30.0)).asFloat64();
+    double handOpacity = rf.check("hand_opacity", yarp::os::Value(1.0)).asFloat64();
+    Eigen::Vector3d handColor= parse3DVector(rf, "hand_color", {100.0 / 255.0, 160 / 255.0, 255.0 / 255.0});
+    int windowWidth = rf.check("window_width", yarp::os::Value(600)).asInt32();
+    int windowHeight = rf.check("window_height", yarp::os::Value(600)).asInt32();
+    std::string tfRemote = rf.check("tf_remote", yarp::os::Value("/transformServer")).asString();
+    Eigen::Vector3d headToLeftEye = parse3DVector(rf, "head_to_left_eye_offset", {0.051, 0.034, 0.013});
+    Eigen::Vector3d headToRightEye = parse3DVector(rf, "head_to_right_eye_offset", {0.051, -0.034, 0.013});
+    Eigen::Vector3d forwardDirection = parse3DVector(rf, "forward_direction", Eigen::Vector3d::UnitX());
+    Eigen::Vector3d upDirection = parse3DVector(rf, "up_direction", Eigen::Vector3d::UnitZ());
 
-    Eigen::Vector3d headToLeftEye;
-    headToLeftEye << 0.051, 0.034, 0.013;
+    leftFrameToHand.setIdentity();
+    rightFrameToHand.setIdentity();
+    leftFrameToHand.block<3,1>(0, 3) = parse3DVector(rf, "left_frame_to_hand_offset", {-0.002, -0.018, -0.059});
+    rightFrameToHand.block<3,1>(0, 3) = parse3DVector(rf, "right_frame_to_hand_offset", {-0.002, 0.018, -0.059});
+    leftFrameToHand.block<3,3>(0, 0) = parseQuaternion(rf, "left_frame_to_hand_quaternion_wxyz", Eigen::Quaterniond(-0.5, 0.5, -0.5, -0.5)).matrix();
+    rightFrameToHand.block<3,3>(0, 0) = parseQuaternion(rf, "right_frame_to_hand_quaternion_wxyz", Eigen::Quaterniond(-0.5, 0.5, -0.5, -0.5)).matrix();
 
-    Eigen::Vector3d headToRightEye;
-    headToRightEye <<  0.051, -0.034, 0.013;
+    auto vecToString = [](const Eigen::Vector3d& input) -> std::string
+    {
+        std::stringstream output;
+        output << "\"(" << input(0) << ", " << input(1) << ", " << input(2) << ")\"";
+        return output.str();
+    };
 
-    //    leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
-    //                       0.0,  0.0,  1.0, -0.018,
-    //                      -1.0,  0.0,  0.0, -0.059,
-    //                       0.0,  0.0,  0.0,  1.0;
-    leftFrameToHand << 0.0, -1.0,  0.0,  0.015,
-            0.0,  0.0,  1.0, -0.018,
-            -1.0,  0.0,  0.0, -0.055,
-            0.0,  0.0,  0.0,  1.0;
-    //    leftFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * leftFrameToHand.block<3,3>(0,0);
-
-
-    //    rightFrameToHand << 0.0, -1.0,  0.0, -0.002,
-    //                        0.0,  0.0,  1.0,  0.018,
-    //                       -1.0,  0.0,  0.0, -0.059,
-    //                        0.0,  0.0,  0.0,  1.0;
-    rightFrameToHand << 0.0, -1.0,  0.0,  0.005,
-            0.0,  0.0,  1.0,  0.010,
-            -1.0,  0.0,  0.0, -0.050,
-            0.0,  0.0,  0.0,  1.0;
-    //    rightFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * rightFrameToHand.block<3,3>(0,0);
-
-    double viewAngle = 37;
-
-    double fps = 60.0;
-
-    Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
-    Eigen::Vector3d upDirection = Eigen::Vector3d::UnitZ();
+    auto quatToString = [](const Eigen::Quaterniond& input) -> std::string
+    {
+        std::stringstream output;
+        output << "\"(" << input.w() << ", " << input.x() << ", " << input.y() << ", " << input.z() << ")\"";
+        return output.str();
+    };
 
 
-    std::tuple<double, double, double> handColor{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0};
-    double handOpacity = 0.2;
+    std::stringstream optionsOut;
+    optionsOut << "Using the following settings:" << std::endl;
+    optionsOut << "        name " << name << std::endl;
+    optionsOut << "        robot " << robot_name << std::endl;
+    optionsOut << "        blocking " << blocking << std::endl;
+    optionsOut << "        use_fingers " << use_fingers << std::endl;
+    optionsOut << "        use_analogs " << use_analogs << std::endl;
+    optionsOut << "        filter_abduction " << filterAbduction << std::endl;
+    optionsOut << "        head_frame " << head_frame << std::endl;
+    optionsOut << "        left_frame " << left_frame << std::endl;
+    optionsOut << "        right_frame " << right_frame << std::endl;
+    optionsOut << "        view_angle " << viewAngle << std::endl;
+    optionsOut << "        desired_fps " << fps << std::endl;
+    optionsOut << "        hand_opacity " << handOpacity << std::endl;
+    optionsOut << "        hand_color " << vecToString(handColor) << std::endl;
+    optionsOut << "        window_width " << windowWidth << std::endl;
+    optionsOut << "        window_height " << windowHeight << std::endl;
+    optionsOut << "        tf_remote " << tfRemote << std::endl;
+    optionsOut << "        head_to_left_eye_offset " << vecToString(headToLeftEye) << std::endl;
+    optionsOut << "        head_to_right_eye_offset " << vecToString(headToRightEye) << std::endl;
+    optionsOut << "        forward_direction " << vecToString(forwardDirection) << std::endl;
+    optionsOut << "        up_direction " << vecToString(upDirection) << std::endl;
+    optionsOut << "        left_frame_to_hand_offset " << vecToString(leftFrameToHand.block<3,1>(0, 3)) << std::endl;
+    optionsOut << "        right_frame_to_hand_offset " << vecToString(rightFrameToHand.block<3,1>(0, 3)) << std::endl;
+    optionsOut << "        left_frame_to_hand_quaternion_wxyz " << quatToString(Eigen::Quaterniond(leftFrameToHand.block<3,3>(0, 0))) << std::endl;
+    optionsOut << "        right_frame_to_hand_quaternion_wxyz " << quatToString(Eigen::Quaterniond(rightFrameToHand.block<3,3>(0, 0))) << std::endl;
+    yInfo() << optionsOut.str();
 
-    int windowWidth = 320;
-    int windowHeight = 240;
-
-    std::string tfRemote = "/transformServer";
 
     //------------------------------------------
 
@@ -133,8 +233,10 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
 
     /* Show hand according to forward kinematics. */
 
-    leftHand = std::make_shared<RobotsViz::VtkiCubHand>(robot_name, "left", name + "/hand_fk/left", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
-    rightHand = std::make_shared<RobotsViz::VtkiCubHand>(robot_name, "right", name + "/hand_fk/right", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
+    leftHand = std::make_shared<RobotsViz::VtkiCubHand>(robot_name, "left", name + "/hand_fk/left", use_fingers, use_analogs,
+                                                        std::tuple<double, double, double>({handColor(0), handColor(1),handColor(2)}), handOpacity, !filterAbduction);
+    rightHand = std::make_shared<RobotsViz::VtkiCubHand>(robot_name, "right", name + "/hand_fk/right", use_fingers, use_analogs,
+                                                         std::tuple<double, double, double>({handColor(0), handColor(1),handColor(2)}), handOpacity, !filterAbduction);
 
     if (!leftEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
     {

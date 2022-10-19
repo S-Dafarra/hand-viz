@@ -45,6 +45,10 @@ class HandsVisualizer
 
     Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input);
 
+    Eigen::Vector3d parse3DVector(const yarp::os::ResourceFinder& rf, const std::string& key, const Eigen::Vector3d& defaultValue);
+
+    Eigen::Quaterniond parseQuaternion(const yarp::os::ResourceFinder& rf, const std::string& key, const Eigen::Quaterniond& defaultValue);
+
 public:
 
     bool configure(const yarp::os::ResourceFinder& rf);
