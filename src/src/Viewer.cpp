@@ -96,27 +96,6 @@ void handleSignals(std::function<void ()> customHandler)
     customHandlerLambda = customHandler;
 }
 
-Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input)
-{
-    if (input.rows() != 4 && input.cols() != 4)
-    {
-        yError() << "The input yarp matrix is not a 4 by 4.";
-        return Eigen::Matrix4d::Identity();
-    }
-
-    Eigen::Matrix4d output;
-
-    for (size_t i = 0; i < 4; ++i)
-    {
-        for (size_t j = 0; j < 4; ++j)
-        {
-            output(i,j) = input[i][j];
-        }
-    }
-
-    return output;
-}
-
 class Eye
 {
 public:
@@ -309,205 +288,214 @@ public:
         return m_yarpImage;
     }
 
-
-
 };
 
 
-int main(int argc, char** argv)
+class HandsVisualizer
 {
-    //TODO
-    //Get the parameters from configuration file
-    //RPC
-    //Add arms meshes
-    //Test the analog readings
-    //Cleanup of the code (separate main, reuse code for left and right)
-    //Allowing using only one hand and only one camera
-    //Test on windows
-
-    yarp::os::Network yarp; //to initialize the network
-
-    std::atomic<bool> closing = false;
-    handleSignals([&](){closing = true;});
-
-    if (argc < 2)
-    {
-        std::cout << "Synopsis: icub-hand-viz <robot_name>" << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    //------------Parameters---------------
-    const std::string robot_name = std::string(argv[1]);
-
-    std::string name = "hand-visualizer";
-
-    bool blocking = false;
-    bool use_fingers = true;
-    bool use_analogs = false;
-    std::string head_frame = "head";
-    std::string left_frame = "l_hand";
-    std::string right_frame = "r_hand";
-
-    Eigen::Vector3d headToLeftEye;
-    headToLeftEye << 0.051, 0.034, 0.013;
-
-    Eigen::Vector3d headToRightEye;
-    headToRightEye <<  0.051, -0.034, 0.013;
-
-    Eigen::Matrix4d leftFrameToHand;
-//    leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
-//                       0.0,  0.0,  1.0, -0.018,
-//                      -1.0,  0.0,  0.0, -0.059,
-//                       0.0,  0.0,  0.0,  1.0;
-    leftFrameToHand << 0.0, -1.0,  0.0,  0.015,
-                       0.0,  0.0,  1.0, -0.018,
-                      -1.0,  0.0,  0.0, -0.055,
-                       0.0,  0.0,  0.0,  1.0;
-//    leftFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * leftFrameToHand.block<3,3>(0,0);
-
-
-    Eigen::Matrix4d rightFrameToHand;
-//    rightFrameToHand << 0.0, -1.0,  0.0, -0.002,
-//                        0.0,  0.0,  1.0,  0.018,
-//                       -1.0,  0.0,  0.0, -0.059,
-//                        0.0,  0.0,  0.0,  1.0;
-    rightFrameToHand << 0.0, -1.0,  0.0,  0.005,
-                        0.0,  0.0,  1.0,  0.010,
-                       -1.0,  0.0,  0.0, -0.050,
-                        0.0,  0.0,  0.0,  1.0;
-//    rightFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * rightFrameToHand.block<3,3>(0,0);
-
-    double viewAngle = 37;
-
-    double fps = 60.0;
-
-    Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
-    Eigen::Vector3d upDirection = Eigen::Vector3d::UnitZ();
-
-
-    std::tuple<double, double, double> handColor{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0};
-    double handOpacity = 0.2;
-
-    bool useAbduction = false;
-    int windowWidth = 320;
-    int windowHeight = 240;
-
-    std::string tfRemote = "/transformServer";
-
-    //------------------------------------------
-
 
     yarp::dev::PolyDriver       ddtransformclient;
     yarp::dev::IFrameTransform       *iframetrans{nullptr};
-
-    yarp::os::Property pTransformclient_cfg;
-    pTransformclient_cfg.put("device", "transformClient");
-    pTransformclient_cfg.put("local", "/" + name + "/transformClient");
-    pTransformclient_cfg.put("remote",  tfRemote);
-
-    bool ok_client = ddtransformclient.open(pTransformclient_cfg);
-    if (!ok_client)
-    {
-        yError()<<"Problem in opening the transformClient device";
-        yError()<<"Is the transformServer YARP device running?";
-    }
-    if (ok_client && !ddtransformclient.view(iframetrans))
-    {
-        yError()<<"IFrameTransform I/F is not implemented";
-    }
-
-    Eye::Settings leftSettings, rightSettings;
-    leftSettings.fps = fps;
-    leftSettings.width = windowWidth;
-    leftSettings.height = windowHeight;
-    leftSettings.blocking = blocking;
-    leftSettings.backgroundColor = {0,0,0};
-    leftSettings.cameraPosition = headToLeftEye;
-    leftSettings.forwardDirection = forwardDirection;
-    leftSettings.upDirection = upDirection;
-    leftSettings.viewAngle = viewAngle;
-
-    rightSettings = leftSettings;
-    rightSettings.cameraPosition = headToRightEye;
-
-    Eye leftEye, rightEye;
-
-    if (!leftEye.initialize(leftSettings))
-    {
-        return EXIT_FAILURE;
-    }
-
-    if (!rightEye.initialize(rightSettings))
-    {
-        return EXIT_FAILURE;
-    }
-
-    /* Show hand according to forward kinematics. */
     std::shared_ptr<VtkiCubHand> leftHand;
     std::shared_ptr<VtkiCubHand> rightHand;
-    leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", name + "/hand_fk/left", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
-    rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", name + "/hand_fk/right", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
-
-    if (!leftEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
-    {
-        return EXIT_FAILURE;
-    }
-
-    if (!rightEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
-    {
-        return EXIT_FAILURE;
-    }
-
-    if (!leftEye.prepareVisualization())
-    {
-        return EXIT_FAILURE;
-    }
-
-    if (!rightEye.prepareVisualization())
-    {
-        return EXIT_FAILURE;
-    }
-
-
+    Eye leftEye;
+    Eye rightEye;
     yarp::os::BufferedPort<yarp::sig::FlexImage> leftEyeOutputPort, rightEyeOutputPort;
-    if (!leftEyeOutputPort.open("/" + name + "/left/image"))
-    {
-        return EXIT_FAILURE;
-    }
-    if (!rightEyeOutputPort.open("/" + name + "/right/image"))
-    {
-        return EXIT_FAILURE;
-    }
-
-
     Eigen::Matrix4d leftTransform;
-    leftTransform << 0.0,  0.0,  1.0, 1.0,
-                     0.0, -1.0,  0.0, 0.05,
-                     1.0,  0.0,  0.0, 0.0,
-                     0.0,  0.0,  0.0, 1.0;
-
-    leftHand->setTransform(leftTransform);
-
     Eigen::Matrix4d rightTransform;
-    rightTransform << 0.0,  0.0, -1.0,  1.0,
-                      0.0,  1.0,  0.0, -0.05,
-                      1.0,  0.0,  0.0,  0.0,
-                      0.0,  0.0,  0.0,  1.0;
-    rightHand->setTransform(rightTransform);
-
-
+    std::string head_frame;
+    std::string left_frame;
+    std::string right_frame;
     yarp::sig::Matrix leftTransformYarp, rightTransformYarp;
+    Eigen::Matrix4d leftFrameToHand;
+    Eigen::Matrix4d rightFrameToHand;
+    bool blocking;
 
-    leftTransformYarp.resize(4,4);
-    leftTransformYarp.eye();
-
-    rightTransformYarp.resize(4,4);
-    rightTransformYarp.eye();
-
-
-    while(!closing)
+    Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input)
     {
+        if (input.rows() != 4 && input.cols() != 4)
+        {
+            yError() << "The input yarp matrix is not a 4 by 4.";
+            return Eigen::Matrix4d::Identity();
+        }
 
+        Eigen::Matrix4d output;
+
+        for (size_t i = 0; i < 4; ++i)
+        {
+            for (size_t j = 0; j < 4; ++j)
+            {
+                output(i,j) = input[i][j];
+            }
+        }
+
+        return output;
+    }
+
+public:
+
+    bool configure(const yarp::os::ResourceFinder& rf)
+    {
+        //------------Parameters---------------
+        std::string robot_name = "icubSim";
+        std::string name = "hand-visualizer";
+        blocking = false;
+        bool use_fingers = true;
+        bool use_analogs = false;
+        bool useAbduction = false;
+        head_frame = "head";
+        left_frame = "l_hand";
+        right_frame = "r_hand";
+
+        Eigen::Vector3d headToLeftEye;
+        headToLeftEye << 0.051, 0.034, 0.013;
+
+        Eigen::Vector3d headToRightEye;
+        headToRightEye <<  0.051, -0.034, 0.013;
+
+    //    leftFrameToHand << 0.0, -1.0,  0.0, -0.002,
+    //                       0.0,  0.0,  1.0, -0.018,
+    //                      -1.0,  0.0,  0.0, -0.059,
+    //                       0.0,  0.0,  0.0,  1.0;
+        leftFrameToHand << 0.0, -1.0,  0.0,  0.015,
+                           0.0,  0.0,  1.0, -0.018,
+                          -1.0,  0.0,  0.0, -0.055,
+                           0.0,  0.0,  0.0,  1.0;
+    //    leftFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * leftFrameToHand.block<3,3>(0,0);
+
+
+    //    rightFrameToHand << 0.0, -1.0,  0.0, -0.002,
+    //                        0.0,  0.0,  1.0,  0.018,
+    //                       -1.0,  0.0,  0.0, -0.059,
+    //                        0.0,  0.0,  0.0,  1.0;
+        rightFrameToHand << 0.0, -1.0,  0.0,  0.005,
+                            0.0,  0.0,  1.0,  0.010,
+                           -1.0,  0.0,  0.0, -0.050,
+                            0.0,  0.0,  0.0,  1.0;
+    //    rightFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * rightFrameToHand.block<3,3>(0,0);
+
+        double viewAngle = 37;
+
+        double fps = 60.0;
+
+        Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
+        Eigen::Vector3d upDirection = Eigen::Vector3d::UnitZ();
+
+
+        std::tuple<double, double, double> handColor{100.0 / 255.0, 160 / 255.0, 255.0 / 255.0};
+        double handOpacity = 0.2;
+
+        int windowWidth = 320;
+        int windowHeight = 240;
+
+        std::string tfRemote = "/transformServer";
+
+        //------------------------------------------
+
+
+        yarp::os::Property pTransformclient_cfg;
+        pTransformclient_cfg.put("device", "transformClient");
+        pTransformclient_cfg.put("local", "/" + name + "/transformClient");
+        pTransformclient_cfg.put("remote",  tfRemote);
+
+        bool ok_client = ddtransformclient.open(pTransformclient_cfg);
+        if (!ok_client)
+        {
+            yError()<<"Problem in opening the transformClient device";
+            yError()<<"Is the transformServer YARP device running?";
+        }
+        if (ok_client && !ddtransformclient.view(iframetrans))
+        {
+            yError()<<"IFrameTransform I/F is not implemented";
+        }
+
+        Eye::Settings leftSettings, rightSettings;
+        leftSettings.fps = fps;
+        leftSettings.width = windowWidth;
+        leftSettings.height = windowHeight;
+        leftSettings.blocking = blocking;
+        leftSettings.backgroundColor = {0,0,0};
+        leftSettings.cameraPosition = headToLeftEye;
+        leftSettings.forwardDirection = forwardDirection;
+        leftSettings.upDirection = upDirection;
+        leftSettings.viewAngle = viewAngle;
+
+        rightSettings = leftSettings;
+        rightSettings.cameraPosition = headToRightEye;
+
+
+        if (!leftEye.initialize(leftSettings))
+        {
+            return false;
+        }
+
+        if (!rightEye.initialize(rightSettings))
+        {
+            return false;
+        }
+
+        /* Show hand according to forward kinematics. */
+
+        leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", name + "/hand_fk/left", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
+        rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", name + "/hand_fk/right", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
+
+        if (!leftEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
+        {
+            return false;
+        }
+
+        if (!rightEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
+        {
+            return false;
+        }
+
+        if (!leftEye.prepareVisualization())
+        {
+            return false;
+        }
+
+        if (!rightEye.prepareVisualization())
+        {
+            return false;
+        }
+
+
+        if (!leftEyeOutputPort.open("/" + name + "/left/image"))
+        {
+            return false;
+        }
+        if (!rightEyeOutputPort.open("/" + name + "/right/image"))
+        {
+            return false;
+        }
+
+
+        //Initial transforms
+        leftTransform << 0.0,  0.0,  1.0, 1.0,
+                         0.0, -1.0,  0.0, 0.05,
+                         1.0,  0.0,  0.0, 0.0,
+                         0.0,  0.0,  0.0, 1.0;
+
+        leftHand->setTransform(leftTransform);
+
+        rightTransform << 0.0,  0.0, -1.0,  1.0,
+                          0.0,  1.0,  0.0, -0.05,
+                          1.0,  0.0,  0.0,  0.0,
+                          0.0,  0.0,  0.0,  1.0;
+        rightHand->setTransform(rightTransform);
+
+
+        leftTransformYarp.resize(4,4);
+        leftTransformYarp.eye();
+
+        rightTransformYarp.resize(4,4);
+        rightTransformYarp.eye();
+
+        return true;
+    }
+
+    bool update()
+    {
         if (iframetrans)
         {
             if (iframetrans->canTransform(left_frame, head_frame))
@@ -549,6 +537,42 @@ int main(int argc, char** argv)
 
         leftEyeOutputPort.write();
         rightEyeOutputPort.write();
+
+        return true;
+    }
+
+};
+
+
+int main(int argc, char** argv)
+{
+    //TODO
+    //Get the parameters from configuration file
+    //RPC
+    //Add arms meshes
+    //Test the analog readings
+    //Cleanup of the code (separate main, reuse code for left and right)
+    //Allowing using only one hand and only one camera
+    //Test on windows
+
+    yarp::os::Network yarp; //to initialize the network
+
+    std::atomic<bool> closing = false;
+    handleSignals([&](){closing = true;});
+
+    yarp::os::ResourceFinder& rf = yarp::os::ResourceFinder::getResourceFinderSingleton();
+
+    rf.configure(argc, argv);
+
+    HandsVisualizer viz;
+    viz.configure(rf);
+
+    while(!closing)
+    {
+        if (!viz.update())
+        {
+            return EXIT_FAILURE;
+        }
     }
 
     return EXIT_SUCCESS;
