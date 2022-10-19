@@ -96,69 +96,6 @@ void handleSignals(std::function<void ()> customHandler)
     customHandlerLambda = customHandler;
 }
 
-void vtkImageDataToYarpimage(vtkImageData* imageData, yarp::sig::FlexImage& image)
-{
-    if (!imageData)
-    {
-        return;
-    }
-
-    /// \todo retrieve just the UpdateExtent
-    int width = imageData->GetDimensions()[0];
-    int height = imageData->GetDimensions()[1];
-
-    bool useRGBA = false;
-    if (imageData->GetNumberOfScalarComponents() == 3)
-    {
-        image.setPixelCode(VOCAB_PIXEL_RGB);
-    }
-    else if (imageData->GetNumberOfScalarComponents() > 3)
-    {
-        image.setPixelCode(VOCAB_PIXEL_RGBA);
-        useRGBA = true;
-    }
-    else
-    {
-        return;
-    }
-
-    image.resize(width, height);
-
-    unsigned char* colorsPtr =
-            reinterpret_cast<unsigned char*>(imageData->GetScalarPointer());
-
-    // Loop over the vtkImageData contents.
-    for (int row = height - 1; row >= 0; row--)
-    {
-        for (int col = 0; col < width; col++)
-        {
-            if (useRGBA)
-            {
-                yarp::sig::PixelRgba& pixelYarp = *(reinterpret_cast<yarp::sig::PixelRgba*>(
-                                                        image.getPixelAddress(col, row)));
-
-                //iDynTree specifies the pixels in [0.0, 1.0], yarp between in [0, 255]
-                pixelYarp.r = colorsPtr[0];
-                pixelYarp.g = colorsPtr[1];
-                pixelYarp.b = colorsPtr[2];
-                pixelYarp.a = colorsPtr[3];
-            }
-            else
-            {
-                yarp::sig::PixelRgb& pixelYarp = *(reinterpret_cast<yarp::sig::PixelRgb*>(
-                                                       image.getPixelAddress(col, row)));
-
-                //iDynTree specifies the pixels in [0.0, 1.0], yarp between in [0, 255]
-                pixelYarp.r = colorsPtr[0];
-                pixelYarp.g = colorsPtr[1];
-                pixelYarp.b = colorsPtr[2];
-            }
-            // Swap the vtkImageData RGB values with an equivalent QColor
-            colorsPtr += imageData->GetNumberOfScalarComponents();
-        }
-    }
-}
-
 Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input)
 {
     if (input.rows() != 4 && input.cols() != 4)
@@ -180,7 +117,7 @@ Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input)
     return output;
 }
 
-class HandVisualizer
+class Eye
 {
 public:
 
@@ -199,15 +136,78 @@ public:
 
 private:
 
-    std::unordered_map<std::string, std::shared_ptr<VtkiCubHand>> m_hands;
     std::unique_ptr<VtkContainer> m_vtkContainer{nullptr};
     vtkNew<vtkWindowToImageFilter> m_screenshot;
     yarp::sig::FlexImage m_yarpImage;
     Settings m_settings;
 
+    bool vtkImageDataToYarpimage(vtkImageData* imageData, yarp::sig::FlexImage& image)
+    {
+        if (!imageData)
+        {
+            yError() << "[HandVisualizer::vtkImageDataToYarpimage] The input data is not valid.";
+            return false;
+        }
+
+        int width = imageData->GetDimensions()[0];
+        int height = imageData->GetDimensions()[1];
+
+        bool useRGBA = false;
+        if (imageData->GetNumberOfScalarComponents() == 3)
+        {
+            image.setPixelCode(VOCAB_PIXEL_RGB);
+        }
+        else if (imageData->GetNumberOfScalarComponents() > 3)
+        {
+            image.setPixelCode(VOCAB_PIXEL_RGBA);
+            useRGBA = true;
+        }
+        else
+        {
+            yError() << "[HandVisualizer::vtkImageDataToYarpimage] Unsopperted number of scalar components.";
+            return false;
+        }
+
+        image.resize(width, height);
+
+        unsigned char* colorsPtr =
+                reinterpret_cast<unsigned char*>(imageData->GetScalarPointer());
+
+        // Loop over the vtkImageData contents.
+        for (int row = height - 1; row >= 0; row--) //Flip the image vertically
+        {
+            for (int col = 0; col < width; col++)
+            {
+                if (useRGBA)
+                {
+                    yarp::sig::PixelRgba& pixelYarp = *(reinterpret_cast<yarp::sig::PixelRgba*>(
+                                                            image.getPixelAddress(col, row)));
+
+                    //iDynTree specifies the pixels in [0.0, 1.0], yarp between in [0, 255]
+                    pixelYarp.r = colorsPtr[0];
+                    pixelYarp.g = colorsPtr[1];
+                    pixelYarp.b = colorsPtr[2];
+                    pixelYarp.a = colorsPtr[3];
+                }
+                else
+                {
+                    yarp::sig::PixelRgb& pixelYarp = *(reinterpret_cast<yarp::sig::PixelRgb*>(
+                                                           image.getPixelAddress(col, row)));
+
+                    //iDynTree specifies the pixels in [0.0, 1.0], yarp between in [0, 255]
+                    pixelYarp.r = colorsPtr[0];
+                    pixelYarp.g = colorsPtr[1];
+                    pixelYarp.b = colorsPtr[2];
+                }
+                // Swap the vtkImageData RGB values with an equivalent QColor
+                colorsPtr += imageData->GetNumberOfScalarComponents();
+            }
+        }
+
+        return true;
+    }
+
 public:
-
-
 
     bool initialize(const Settings& settings)
     {
@@ -223,28 +223,33 @@ public:
         return true;
     }
 
-    bool addHand(const std::string& name, std::shared_ptr<VtkiCubHand> hand)
+    bool addContent(const std::string& name, std::shared_ptr<VtkContent> content)
     {
         if (!m_vtkContainer)
         {
-            yError() << "[HandVisualizer::addHand] The initialize method had not been called yet.";
+            yError() << "[HandVisualizer::addContent] The initialize method had not been called yet.";
             return false;
         }
 
-        if (m_hands.find(name) != m_hands.end())
+        if (!content)
         {
-            yError() << "[HandVisualizer::addHand] The hand named" << name << "already exists";
+            yError() << "[HandVisualizer::addContent] The input content pointer is not valid.";
             return false;
         }
 
-        if (!hand)
+        m_vtkContainer->add_content(name, content);
+        return true;
+    }
+
+    bool addContents(const std::vector<std::pair<std::string, std::shared_ptr<VtkContent>>>& contents)
+    {
+        for (auto& content : contents)
         {
-            yError() << "[HandVisualizer::addHand] The input hand pointer is not valid.";
-            return false;
+            if (!addContent(content.first, content.second))
+            {
+                return false;
+            }
         }
-
-        m_hands[name] = hand;
-        m_vtkContainer->add_content(name, hand);
         return true;
     }
 
@@ -259,7 +264,7 @@ public:
         m_vtkContainer->initialize();
         m_vtkContainer->setOrientationWidgetEnabled(false);
         m_vtkContainer->render_window()->SetAlphaBitPlanes(1);
-    //    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
+    //    m_vtkContainer->render_window()->SetOffScreenRendering(1); //This would be needed to avoid the windows to appear, but it seems not properly supported on Linux
         m_vtkContainer->renderer()->SetBackground(std::get<0>(m_settings.backgroundColor),
                                                   std::get<1>(m_settings.backgroundColor),
                                                   std::get<2>(m_settings.backgroundColor));
@@ -275,6 +280,35 @@ public:
         return true;
     }
 
+    void render()
+    {
+        if (!m_vtkContainer)
+        {
+            yError() << "[HandVisualizer::render] The initialize method had not been called yet.";
+            return;
+        }
+
+        m_vtkContainer->render();
+    }
+
+    bool takeScreenshot()
+    {
+        if (!m_vtkContainer)
+        {
+            yError() << "[HandVisualizer::takeScreenshot] The initialize method had not been called yet.";
+            return false;
+        }
+
+        m_screenshot->Modified(); //to update the screenshot
+        m_screenshot->Update();
+        return vtkImageDataToYarpimage(m_screenshot->GetOutput(), m_yarpImage);
+    }
+
+    const yarp::sig::FlexImage& screenshot()
+    {
+        return m_yarpImage;
+    }
+
 
 
 };
@@ -285,6 +319,7 @@ int main(int argc, char** argv)
     //TODO
     //Get the parameters from configuration file
     //RPC
+    //Add arms meshes
     //Test the analog readings
     //Cleanup of the code (separate main, reuse code for left and right)
     //Allowing using only one hand and only one camera
@@ -292,7 +327,7 @@ int main(int argc, char** argv)
 
     yarp::os::Network yarp; //to initialize the network
 
-    bool closing = false;
+    std::atomic<bool> closing = false;
     handleSignals([&](){closing = true;});
 
     if (argc < 2)
@@ -324,11 +359,11 @@ int main(int argc, char** argv)
 //                       0.0,  0.0,  1.0, -0.018,
 //                      -1.0,  0.0,  0.0, -0.059,
 //                       0.0,  0.0,  0.0,  1.0;
-    leftFrameToHand << 0.0, -1.0,  0.0,  0.025,
+    leftFrameToHand << 0.0, -1.0,  0.0,  0.015,
                        0.0,  0.0,  1.0, -0.018,
                       -1.0,  0.0,  0.0, -0.055,
                        0.0,  0.0,  0.0,  1.0;
-    leftFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * leftFrameToHand.block<3,3>(0,0);
+//    leftFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * leftFrameToHand.block<3,3>(0,0);
 
 
     Eigen::Matrix4d rightFrameToHand;
@@ -336,17 +371,15 @@ int main(int argc, char** argv)
 //                        0.0,  0.0,  1.0,  0.018,
 //                       -1.0,  0.0,  0.0, -0.059,
 //                        0.0,  0.0,  0.0,  1.0;
-    rightFrameToHand << 0.0, -1.0,  0.0,  0.010,
+    rightFrameToHand << 0.0, -1.0,  0.0,  0.005,
                         0.0,  0.0,  1.0,  0.010,
                        -1.0,  0.0,  0.0, -0.050,
                         0.0,  0.0,  0.0,  1.0;
-    rightFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * rightFrameToHand.block<3,3>(0,0);
-
-
+//    rightFrameToHand.block<3,3>(0,0) = Eigen::AngleAxisd(-0.25, Eigen::Vector3d::UnitY()) * rightFrameToHand.block<3,3>(0,0);
 
     double viewAngle = 37;
 
-    double fps = 30.0;
+    double fps = 60.0;
 
     Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
     Eigen::Vector3d upDirection = Eigen::Vector3d::UnitZ();
@@ -383,21 +416,59 @@ int main(int argc, char** argv)
         yError()<<"IFrameTransform I/F is not implemented";
     }
 
-    VtkContainer leftEyeContainer(1.0 / fps, windowWidth, windowHeight, blocking);
-    VtkContainer rightEyeContainer(1.0 / fps, windowWidth, windowHeight, blocking);
+    Eye::Settings leftSettings, rightSettings;
+    leftSettings.fps = fps;
+    leftSettings.width = windowWidth;
+    leftSettings.height = windowHeight;
+    leftSettings.blocking = blocking;
+    leftSettings.backgroundColor = {0,0,0};
+    leftSettings.cameraPosition = headToLeftEye;
+    leftSettings.forwardDirection = forwardDirection;
+    leftSettings.upDirection = upDirection;
+    leftSettings.viewAngle = viewAngle;
 
+    rightSettings = leftSettings;
+    rightSettings.cameraPosition = headToRightEye;
+
+    Eye leftEye, rightEye;
+
+    if (!leftEye.initialize(leftSettings))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!rightEye.initialize(rightSettings))
+    {
+        return EXIT_FAILURE;
+    }
 
     /* Show hand according to forward kinematics. */
     std::shared_ptr<VtkiCubHand> leftHand;
     std::shared_ptr<VtkiCubHand> rightHand;
     leftHand = std::make_shared<VtkiCubHand>(robot_name, "left", name + "/hand_fk/left", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
     rightHand = std::make_shared<VtkiCubHand>(robot_name, "right", name + "/hand_fk/right", use_fingers, use_analogs, handColor, handOpacity, useAbduction);
-    leftEyeContainer.add_content("hand_fk_l", leftHand);
-    rightEyeContainer.add_content("hand_fk_l", leftHand);
-    leftEyeContainer.add_content("hand_fk_r", rightHand);
-    rightEyeContainer.add_content("hand_fk_r", rightHand);
 
-    yarp::sig::FlexImage yarpImage;
+    if (!leftEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!rightEye.addContents({{"left_hand", leftHand}, {"right_hand", rightHand}}))
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!leftEye.prepareVisualization())
+    {
+        return EXIT_FAILURE;
+    }
+
+    if (!rightEye.prepareVisualization())
+    {
+        return EXIT_FAILURE;
+    }
+
+
     yarp::os::BufferedPort<yarp::sig::FlexImage> leftEyeOutputPort, rightEyeOutputPort;
     if (!leftEyeOutputPort.open("/" + name + "/left/image"))
     {
@@ -408,39 +479,6 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-
-    leftEyeContainer.initialize();
-    leftEyeContainer.setOrientationWidgetEnabled(false);
-    leftEyeContainer.render_window()->SetAlphaBitPlanes(1);
-//    leftEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
-    leftEyeContainer.renderer()->SetBackground(0, 0, 0);
-    leftEyeContainer.camera()->SetViewUp(upDirection(0), upDirection(1), upDirection(2));
-    leftEyeContainer.camera()->SetPosition(headToLeftEye(0), headToLeftEye(1), headToLeftEye(2));
-    leftEyeContainer.camera()->SetFocalPoint(headToLeftEye(0) + forwardDirection(0),
-                                             headToLeftEye(1) + forwardDirection(1),
-                                             headToLeftEye(2) + forwardDirection(2));
-    leftEyeContainer.camera()->SetViewAngle(viewAngle);
-
-
-    rightEyeContainer.initialize();
-    rightEyeContainer.setOrientationWidgetEnabled(false);
-    rightEyeContainer.render_window()->SetAlphaBitPlanes(1);
-//    rightEyeContainer.render_window()->SetOffScreenRendering(1); //Not properly supported on Linux
-    rightEyeContainer.renderer()->SetBackground(0, 0, 0);
-    rightEyeContainer.camera()->SetViewUp(upDirection(0), upDirection(1), upDirection(2));
-    rightEyeContainer.camera()->SetPosition(headToRightEye(0), headToRightEye(1), headToRightEye(2));
-    rightEyeContainer.camera()->SetFocalPoint(headToRightEye(0) + forwardDirection(0),
-                                              headToRightEye(1) + forwardDirection(1),
-                                              headToRightEye(2) + forwardDirection(2));
-    rightEyeContainer.camera()->SetViewAngle(viewAngle);
-
-
-    vtkNew<vtkWindowToImageFilter> rightScreenshot;
-    rightScreenshot->SetInputBufferTypeToRGBA();
-    rightScreenshot->SetInput(rightEyeContainer.render_window());
-    vtkNew<vtkWindowToImageFilter> leftScreenshot;
-    leftScreenshot->SetInputBufferTypeToRGBA();
-    leftScreenshot->SetInput(leftEyeContainer.render_window());
 
     Eigen::Matrix4d leftTransform;
     leftTransform << 0.0,  0.0,  1.0, 1.0,
@@ -492,28 +530,24 @@ int main(int argc, char** argv)
         leftHand->setTransform(leftTransform);
         rightHand->setTransform(rightTransform);
 
+        leftHand->update(blocking);
+        rightHand->update(blocking);
 
-        leftEyeContainer.updateContent(); //the content is shared between the two
-
-        leftEyeContainer.render();
-        rightEyeContainer.render();
-
-        leftScreenshot->Modified(); //to update the screenshot
-        leftScreenshot->Update();
-        vtkImageDataToYarpimage(leftScreenshot->GetOutput(), yarpImage);
+        leftEye.render();
+        rightEye.render();
+        leftEye.takeScreenshot();
+        rightEye.takeScreenshot();
 
         yarp::sig::FlexImage& imageLeftToBeSent = leftEyeOutputPort.prepare();
-        imageLeftToBeSent.setPixelCode(yarpImage.getPixelCode());
-        imageLeftToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
-        leftEyeOutputPort.write();
+        imageLeftToBeSent.setPixelCode(leftEye.screenshot().getPixelCode());
+        imageLeftToBeSent.setExternal(leftEye.screenshot().getRawImage(), leftEye.screenshot().width(), leftEye.screenshot().height()); //Avoid to copy
 
-        rightScreenshot->Modified(); //to update the screenshot
-        rightScreenshot->Update();
-        vtkImageDataToYarpimage(rightScreenshot->GetOutput(), yarpImage);
 
         yarp::sig::FlexImage& imageRightToBeSent = rightEyeOutputPort.prepare();
-        imageRightToBeSent.setPixelCode(yarpImage.getPixelCode());
-        imageRightToBeSent.setExternal(yarpImage.getRawImage(), yarpImage.width(), yarpImage.height()); //Avoid to copy
+        imageRightToBeSent.setPixelCode(rightEye.screenshot().getPixelCode());
+        imageRightToBeSent.setExternal(rightEye.screenshot().getRawImage(), rightEye.screenshot().width(), rightEye.screenshot().height()); //Avoid to copy
+
+        leftEyeOutputPort.write();
         rightEyeOutputPort.write();
     }
 
