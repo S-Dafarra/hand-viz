@@ -360,6 +360,7 @@ std::string HandsVisualizer::printSettings()
                 return "";
             }
         }
+        m_printSettingsCalled = true; //We still need to close the list. This is done in the read
     }
 
     return "";
@@ -367,8 +368,28 @@ std::string HandsVisualizer::printSettings()
 
 bool HandsVisualizer::read(yarp::os::ConnectionReader &connection)
 {
-    m_tempReader = &connection;
-    return HandVisualizerCommands::read(connection);
+    {
+        std::lock_guard<std::mutex> lock(m_readMutex); //to protect the write of m_tempReader in case we receive multiple connections
+        m_tempReader = &connection;
+
+        if (!HandVisualizerCommands::read(connection))
+        {
+            return false;
+        }
+    }
+
+    if (!m_printSettingsCalled)
+    {
+        return true;
+    }
+    m_printSettingsCalled = false;
+
+    yarp::os::idl::WireReader reader(connection);
+    yarp::os::idl::WireWriter writer(reader);
+    if (!writer.writeListEnd()) {
+        return false;
+    }
+    return true;
 }
 
 Eigen::Vector3d HandsVisualizer::Settings::parse3DVector(const yarp::os::Searchable &rf, const std::string &key, const Eigen::Vector3d &defaultValue)

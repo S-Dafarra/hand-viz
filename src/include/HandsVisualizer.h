@@ -79,8 +79,9 @@ class HandsVisualizer : public HandVisualizerCommands
     yarp::sig::Matrix m_leftTransformYarp, m_rightTransformYarp;
     yarp::os::Port m_rpcPort;
     Settings m_settings;
-    std::mutex m_handsMutex, m_eyesMutex;
+    std::mutex m_handsMutex, m_eyesMutex, m_readMutex;
     yarp::os::ConnectionReader* m_tempReader;
+    std::atomic_bool m_printSettingsCalled{false};
 
     Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input);
 
