@@ -82,7 +82,6 @@ void handleSignals(std::function<void ()> customHandler)
 int main(int argc, char** argv)
 {
     //TODO
-    //Get the parameters from configuration file
     //RPC
     //Add arms meshes
     //Test the analog readings
@@ -108,6 +107,8 @@ int main(int argc, char** argv)
             return EXIT_FAILURE;
         }
     }
+
+    viz.close();
 
     return EXIT_SUCCESS;
 }

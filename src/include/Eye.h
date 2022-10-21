@@ -43,6 +43,10 @@ public:
 
     bool addContents(const std::vector<std::pair<std::string, std::shared_ptr<RobotsViz::VtkContent>>>& contents);
 
+    bool setViewAngle(double viewAngle);
+
+    bool setCameraPosition(const Eigen::Vector3d& position);
+
     bool prepareVisualization();
 
     void render();

@@ -138,54 +138,237 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
     m_rightTransformYarp.resize(4,4);
     m_rightTransformYarp.eye();
 
+    std::string rpcPortName = "/" + m_settings.name + "/rpc";
+    this->yarp().attachAsServer(this->m_rpcPort);
+    if(!m_rpcPort.open(rpcPortName))
+    {
+        yError() << "Could not open" << rpcPortName << " RPC port.";
+        return false;
+    }
+
     return true;
 }
 
 bool HandsVisualizer::update()
 {
+    std::string leftFrame, rightFrame, headFrame;
+    bool blocking;
+    Eigen::Matrix4d leftFrameToHand, rightFrameToHand;
+    {
+        std::lock_guard<std::mutex> lock(m_settings.mutex);
+        leftFrame = m_settings.left_frame;
+        rightFrame = m_settings.right_frame;
+        headFrame = m_settings.head_frame;
+        blocking = m_settings.blocking;
+        leftFrameToHand = m_settings.leftFrameToHand;
+        rightFrameToHand = m_settings.rightFrameToHand;
+    }
+
     if (m_iframetrans)
     {
-        if (m_iframetrans->canTransform(m_settings.left_frame, m_settings.head_frame))
+        if (m_iframetrans->canTransform(leftFrame, headFrame))
         {
-            if (m_iframetrans->getTransform(m_settings.left_frame, m_settings.head_frame, m_leftTransformYarp))
+            if (m_iframetrans->getTransform(leftFrame, headFrame, m_leftTransformYarp))
             {
-                m_leftTransform = toEigen(m_leftTransformYarp) * m_settings.leftFrameToHand;
+                m_leftTransform = toEigen(m_leftTransformYarp) * leftFrameToHand;
             }
         }
 
-        if (m_iframetrans->canTransform(m_settings.right_frame, m_settings.head_frame))
+        if (m_iframetrans->canTransform(rightFrame, headFrame))
         {
-            if (m_iframetrans->getTransform(m_settings.right_frame, m_settings.head_frame, m_rightTransformYarp))
+            if (m_iframetrans->getTransform(rightFrame, headFrame, m_rightTransformYarp))
             {
-                m_rightTransform = toEigen(m_rightTransformYarp) * m_settings.rightFrameToHand;
+                m_rightTransform = toEigen(m_rightTransformYarp) * rightFrameToHand;
             }
         }
     }
 
-    m_leftHand->setTransform(m_leftTransform);
-    m_rightHand->setTransform(m_rightTransform);
+    {
+        std::lock_guard<std::mutex> lock(m_handsMutex);
+        m_leftHand->setTransform(m_leftTransform);
+        m_rightHand->setTransform(m_rightTransform);
 
-    m_leftHand->update(m_settings.blocking);
-    m_rightHand->update(m_settings.blocking);
+        m_leftHand->update(blocking);
+        m_rightHand->update(blocking);
+    }
 
-    m_leftEye.render();
-    m_rightEye.render();
-    m_leftEye.takeScreenshot();
-    m_rightEye.takeScreenshot();
+    {
+        std::lock_guard<std::mutex> lock(m_eyesMutex);
+        m_leftEye.render();
+        m_rightEye.render();
+        m_leftEye.takeScreenshot();
+        m_rightEye.takeScreenshot();
 
-    yarp::sig::FlexImage& imageLeftToBeSent = m_leftEyeOutputPort.prepare();
-    imageLeftToBeSent.setPixelCode(m_leftEye.screenshot().getPixelCode());
-    imageLeftToBeSent.setExternal(m_leftEye.screenshot().getRawImage(), m_leftEye.screenshot().width(), m_leftEye.screenshot().height()); //Avoid to copy
+        yarp::sig::FlexImage& imageLeftToBeSent = m_leftEyeOutputPort.prepare();
+        imageLeftToBeSent.setPixelCode(m_leftEye.screenshot().getPixelCode());
+        imageLeftToBeSent.setExternal(m_leftEye.screenshot().getRawImage(), m_leftEye.screenshot().width(), m_leftEye.screenshot().height()); //Avoid to copy
 
 
-    yarp::sig::FlexImage& imageRightToBeSent = m_rightEyeOutputPort.prepare();
-    imageRightToBeSent.setPixelCode(m_rightEye.screenshot().getPixelCode());
-    imageRightToBeSent.setExternal(m_rightEye.screenshot().getRawImage(), m_rightEye.screenshot().width(), m_rightEye.screenshot().height()); //Avoid to copy
+        yarp::sig::FlexImage& imageRightToBeSent = m_rightEyeOutputPort.prepare();
+        imageRightToBeSent.setPixelCode(m_rightEye.screenshot().getPixelCode());
+        imageRightToBeSent.setExternal(m_rightEye.screenshot().getRawImage(), m_rightEye.screenshot().width(), m_rightEye.screenshot().height()); //Avoid to copy
+    }
 
     m_leftEyeOutputPort.write();
     m_rightEyeOutputPort.write();
 
     return true;
+}
+
+void HandsVisualizer::close()
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex), lockHands(m_handsMutex);
+    m_rpcPort.close();
+    m_leftEyeOutputPort.close();
+    m_rightEyeOutputPort.close();
+    m_ddtransformclient.close();
+}
+
+bool HandsVisualizer::setViewAngle(const double angleInDeg)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex);
+
+    if (!m_leftEye.setViewAngle(angleInDeg) || !m_rightEye.setViewAngle(angleInDeg))
+    {
+        m_leftEye.setViewAngle(m_settings.viewAngle);
+        m_rightEye.setViewAngle(m_settings.viewAngle);
+        return false;
+    }
+
+    m_settings.viewAngle = angleInDeg;
+
+    return true;
+
+}
+
+bool HandsVisualizer::setHandColor(const double r, const double g, const double b)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex), lockHands(m_handsMutex);
+    m_leftHand->setColor({r, g, b});
+    m_rightHand->setColor({r, g, b});
+    m_settings.handColor = {r, g, b};
+    return true;
+}
+
+bool HandsVisualizer::setHandOpacity(const double opacity)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex), lockHands(m_handsMutex);
+    m_leftHand->setOpacity(opacity);
+    m_rightHand->setOpacity(opacity);
+    m_settings.handOpacity = opacity;
+    return true;
+}
+
+bool HandsVisualizer::setHeadToLeftEyeOffset(const double x, const double y, const double z)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex);
+
+    if (!m_leftEye.setCameraPosition({x, y, z}))
+    {
+        return false;
+    }
+
+    m_settings.headToLeftEye = {x, y, z};
+    return true;
+}
+
+bool HandsVisualizer::setHeadToRightEyeOffset(const double x, const double y, const double z)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex);
+
+    if (!m_rightEye.setCameraPosition({x, y, z}))
+    {
+        return false;
+    }
+
+    m_settings.headToRightEye = {x, y, z};
+    return true;
+}
+
+bool HandsVisualizer::setLeftFrameToHandOffset(const double x, const double y, const double z)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex);
+
+    m_settings.leftFrameToHand.block<3,1>(0, 3) = Eigen::Vector3d({x, y, z});
+
+    return true;
+
+}
+
+bool HandsVisualizer::setRightFrameToHandOffset(const double x, const double y, const double z)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex);
+
+    m_settings.rightFrameToHand.block<3,1>(0, 3) = Eigen::Vector3d({x, y, z});
+
+    return true;
+}
+
+bool HandsVisualizer::setLeftFrameToHandQuaternion(const double w, const double x, const double y, const double z)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex);
+
+    m_settings.leftFrameToHand.block<3,3>(0, 0) = Eigen::Quaterniond(w, x, y, z).toRotationMatrix();
+
+    return true;
+}
+
+bool HandsVisualizer::setRightFrameToHandQuaternion(const double w, const double x, const double y, const double z)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex);
+
+    m_settings.rightFrameToHand.block<3,3>(0, 0) = Eigen::Quaterniond(w, x, y, z).toRotationMatrix();
+
+    return true;
+}
+
+std::string HandsVisualizer::printSettings()
+{
+    std::string settings;
+    {
+        std::lock_guard<std::mutex> lockSettings(m_settings.mutex);
+        settings = m_settings.toString(0);
+    }
+
+    std::vector<std::string> output;
+    size_t start = 1;
+    size_t newline = settings.find('\n', start);
+    while (newline != std::string::npos)
+    {
+        output.push_back(settings.substr(start, newline - start));
+        start = newline + 1;
+        newline = settings.find('\n', start);
+    }
+
+    //The following is a workaround to print nicely in the RPC terminal
+    //all the different strings composing the settings.
+    //The code has been copied from the help command.
+    yarp::os::idl::WireReader reader(*m_tempReader);
+    yarp::os::idl::WireWriter writer(reader);
+    if (!writer.isNull()) {
+        if (!writer.writeListHeader(2)) {
+            return "";
+        }
+        if (!writer.writeTag("many", 1, 0)) {
+            return "";
+        }
+        if (!writer.writeListBegin(0, output.size() + 1)) { //we give space to an additional string
+            return "";
+        }
+        for (const auto& string : output) {
+            if (!writer.writeString(string)) {
+                return "";
+            }
+        }
+    }
+
+    return "";
+}
+
+bool HandsVisualizer::read(yarp::os::ConnectionReader &connection)
+{
+    m_tempReader = &connection;
+    return HandVisualizerCommands::read(connection);
 }
 
 Eigen::Vector3d HandsVisualizer::Settings::parse3DVector(const yarp::os::Searchable &rf, const std::string &key, const Eigen::Vector3d &defaultValue)

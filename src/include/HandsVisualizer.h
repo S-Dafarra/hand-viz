@@ -22,8 +22,12 @@
 
 #include <memory>
 #include <tuple>
+#include <thread>
+#include <atomic>
 
-class HandsVisualizer
+#include <thrifts/HandVisualizerCommands.h>
+
+class HandsVisualizer : public HandVisualizerCommands
 {
 
     class Settings
@@ -33,6 +37,7 @@ class HandsVisualizer
         Eigen::Quaterniond parseQuaternion(const yarp::os::Searchable& rf, const std::string& key, const Eigen::Quaterniond& defaultValue);
 
     public:
+        std::mutex mutex;
         std::string robot_name;
         std::string name;
         bool blocking;
@@ -72,7 +77,10 @@ class HandsVisualizer
     Eigen::Matrix4d m_leftTransform;
     Eigen::Matrix4d m_rightTransform;
     yarp::sig::Matrix m_leftTransformYarp, m_rightTransformYarp;
+    yarp::os::Port m_rpcPort;
     Settings m_settings;
+    std::mutex m_handsMutex, m_eyesMutex;
+    yarp::os::ConnectionReader* m_tempReader;
 
     Eigen::Matrix4d toEigen(const yarp::sig::Matrix& input);
 
@@ -81,6 +89,77 @@ public:
     bool configure(const yarp::os::ResourceFinder& rf);
 
     bool update();
+
+    void close();
+
+    /**
+     * Set the vertical view angle of the camera (in degrees).
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setViewAngle(const double angleInDeg) override;
+
+    /**
+     * Set the color of the hand. The values are supposed to be between 0 and 1.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setHandColor(const double r, const double g, const double b) override;
+
+    /**
+     * Set the opacity of the hand.
+     * 0 is fully transparent, 1 is fully opaque.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setHandOpacity(const double opacity) override;
+
+    /**
+     * Set the position of the left eye with respect the head frame.
+     * The components are expressed in meters.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setHeadToLeftEyeOffset(const double x, const double y, const double z) override;
+
+    /**
+     * Set the position of the right eye with respect the head frame.
+     * The components are expressed in meters.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setHeadToRightEyeOffset(const double x, const double y, const double z) override;
+
+    /**
+     * Set the position of the left hand with respect the left frame.
+     * The components are expressed in meters.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setLeftFrameToHandOffset(const double x, const double y, const double z) override;
+
+    /**
+     * Set the position of the right hand with respect the right frame.
+     * The components are expressed in meters.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setRightFrameToHandOffset(const double x, const double y, const double z) override;
+
+    /**
+     * Set the orientation of the left hand with respect the left frame.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setLeftFrameToHandQuaternion(const double w, const double x, const double y, const double z) override;
+
+    /**
+     * Set the orientation of the right hand with respect the right frame.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setRightFrameToHandQuaternion(const double w, const double x, const double y, const double z) override;
+
+    /**
+     * Prints the settings
+     * @return A string that can be copied in a configuration file,
+     *         including the modifications set from RPC
+     */
+    virtual std::string printSettings() override;
+
+    //This is to fix the print of settings
+    bool read(yarp::os::ConnectionReader& connection) override;
 };
 
 #endif // HAND_VIZ_HANDSVISUALIZER_H

@@ -120,6 +120,36 @@ bool Eye::addContents(const std::vector<std::pair<std::string, std::shared_ptr<R
     return true;
 }
 
+bool Eye::setViewAngle(double viewAngle)
+{
+    if (!m_vtkContainer)
+    {
+        yError() << "[HandVisualizer::setViewAngle] The initialize method had not been called yet.";
+        return false;
+    }
+
+    m_settings.viewAngle = viewAngle;
+
+    m_vtkContainer->camera()->SetViewAngle(viewAngle);
+
+    return true;
+}
+
+bool Eye::setCameraPosition(const Eigen::Vector3d &position)
+{
+    if (!m_vtkContainer)
+    {
+        yError() << "[HandVisualizer::setCameraPosition] The initialize method had not been called yet.";
+        return false;
+    }
+
+    m_settings.cameraPosition = position;
+
+    m_vtkContainer->camera()->SetPosition(m_settings.cameraPosition(0), m_settings.cameraPosition(1), m_settings.cameraPosition(2));
+
+    return true;
+}
+
 bool Eye::prepareVisualization()
 {
     if (!m_vtkContainer)

@@ -16,6 +16,9 @@ find_package(RobotsViz REQUIRED)
 find_package(YARP REQUIRED COMPONENTS
              cv    # seems that RobotsIO export is not working on Ubuntu18.04
              eigen # seems that RobotsIO export is not working on Ubuntu18.04
+             idl_tools
+             os
+             dev
 )
 
 set(${EXE_TARGET_NAME}_HDR
@@ -28,7 +31,11 @@ set(${EXE_TARGET_NAME}_SRC
     src/main.cpp
 )
 
-add_executable(${EXE_TARGET_NAME} ${${EXE_TARGET_NAME}_HDR} ${${EXE_TARGET_NAME}_SRC})
+set (THRIFTS thrifts/HandVisualizerCommands.thrift)
+
+yarp_add_idl(THRIFT_GEN_FILES ${THRIFTS})
+
+add_executable(${EXE_TARGET_NAME} ${${EXE_TARGET_NAME}_HDR} ${${EXE_TARGET_NAME}_SRC} ${THRIFT_GEN_FILES})
 
 target_include_directories(${EXE_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
