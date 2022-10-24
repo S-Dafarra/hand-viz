@@ -9,7 +9,38 @@
 
 set(EXE_TARGET_NAME icub-hand-viz)
 
-find_package(RobotsIO REQUIRED)
+option(USE_SYSTEM_RobotsIO OFF)
+if(USE_SYSTEM_RobotsIO)
+   find_package(RobotsIO REQUIRED)
+else()
+  include(FetchContent)
+  FetchContent_Declare(RobotsIO
+    GIT_REPOSITORY https://github.com/S-Dafarra/robots-io
+    GIT_TAG 2dfe590e3b0501387ed8dedc31b4339eb36474a7)
+
+  FetchContent_GetProperties(RobotsIO)
+  if(NOT RobotsIO_POPULATED)
+    message(STATUS "Fetching RobotsIO...")
+    FetchContent_MakeAvailable(RobotsIO)
+  endif()
+endif()
+
+option(USE_SYSTEM_RobotsViz OFF)
+if(USE_SYSTEM_RobotsViz)
+   find_package(RobotsViz REQUIRED)
+else()
+  include(FetchContent)
+  FetchContent_Declare(RobotsViz
+    GIT_REPOSITORY https://github.com/S-Dafarra/robots-viz
+    GIT_TAG 4c3c472fd69b9c066feaea032d9f15f867db2b93)
+
+  FetchContent_GetProperties(RobotsViz)
+  if(NOT RobotsViz_POPULATED)
+    message(STATUS "Fetching RobotsViz...")
+    FetchContent_MakeAvailable(RobotsViz)
+  endif()
+endif()
+
 
 find_package(RobotsViz REQUIRED)
 

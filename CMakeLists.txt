@@ -42,6 +42,6 @@ if(NOT CMAKE_CONFIGURATION_TYPES)
         message(STATUS "Setting build type to 'Release' as none was specified.")
         set_property(CACHE CMAKE_BUILD_TYPE PROPERTY VALUE "Release")
     endif()
-  endif()
+endif()
 
 add_subdirectory(src)
