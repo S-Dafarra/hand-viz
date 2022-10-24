@@ -9,6 +9,8 @@
 #define HAND_VIZ_HANDSVISUALIZER_H
 
 #include <RobotsViz/VtkiCubHand.h>
+#include <RobotsViz/VtkObject.h>
+#include <RobotsIO/Utils/ManualTransform.h>
 
 #include <yarp/dev/PolyDriver.h>
 #include <yarp/dev/IFrameTransform.h>
@@ -44,9 +46,12 @@ class HandsVisualizer : public HandVisualizerCommands
         bool use_fingers;
         bool use_analogs;
         bool filterAbduction;
+        bool view_forearms;
         std::string head_frame;
-        std::string left_frame;
-        std::string right_frame;
+        std::string left_hand_frame;
+        std::string right_hand_frame;
+        std::string left_forearm_frame;
+        std::string right_forearm_frame;
         double viewAngle;
         double fps;
         double handOpacity;
@@ -61,6 +66,8 @@ class HandsVisualizer : public HandVisualizerCommands
         Eigen::Vector3d upDirection;
         Eigen::Matrix4d leftFrameToHand;
         Eigen::Matrix4d rightFrameToHand;
+        Eigen::Matrix4d leftForearmMeshTransform;
+        Eigen::Matrix4d rightForearmMeshTransform;
 
         void parse(const yarp::os::Searchable& rf);
 
@@ -71,12 +78,17 @@ class HandsVisualizer : public HandVisualizerCommands
     yarp::dev::IFrameTransform *m_iframetrans{nullptr};
     std::shared_ptr<RobotsViz::VtkiCubHand> m_leftHand;
     std::shared_ptr<RobotsViz::VtkiCubHand> m_rightHand;
+    std::shared_ptr<RobotsViz::VtkObject> m_leftForearm;
+    std::shared_ptr<RobotsIO::Utils::ManualTransform> m_leftForearmTrasform;
+    std::shared_ptr<RobotsViz::VtkObject> m_rightForearm;
+    std::shared_ptr<RobotsIO::Utils::ManualTransform> m_rightForearmTrasform;
     Eye m_leftEye;
     Eye m_rightEye;
     yarp::os::BufferedPort<yarp::sig::FlexImage> m_leftEyeOutputPort, m_rightEyeOutputPort;
     Eigen::Matrix4d m_leftTransform;
     Eigen::Matrix4d m_rightTransform;
     yarp::sig::Matrix m_leftTransformYarp, m_rightTransformYarp;
+    yarp::sig::Matrix m_leftForearmTransformYarp, m_rightForearmTransformYarp;
     yarp::os::Port m_rpcPort;
     Settings m_settings;
     std::mutex m_handsMutex, m_eyesMutex, m_readMutex;
@@ -151,6 +163,13 @@ public:
      * @return true/false in case of success/failure.
      */
     virtual bool setRightFrameToHandQuaternion(const double w, const double x, const double y, const double z) override;
+
+    /**
+     * Set the visibility of the forearms.
+     * If the input boolean is true, the forearms are visible. Invisible if 0.
+     * @return true/false in case of success/failure.
+     */
+    virtual bool setForearmsVisibility(const bool visible) override;
 
     /**
      * Prints the settings

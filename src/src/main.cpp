@@ -82,7 +82,6 @@ void handleSignals(std::function<void ()> customHandler)
 int main(int argc, char** argv)
 {
     //TODO
-    //RPC
     //Add arms meshes
     //Test the analog readings
     //Allowing using only one hand and only one camera

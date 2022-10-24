@@ -87,12 +87,22 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
                                                          std::tuple<double, double, double>({m_settings.handColor(0), m_settings.handColor(1), m_settings.handColor(2)}),
                                                          m_settings.handOpacity, !m_settings.filterAbduction);
 
-    if (!m_leftEye.addContents({{"left_hand", m_leftHand}, {"right_hand", m_rightHand}}))
+    m_leftForearmTrasform = std::make_shared<RobotsIO::Utils::ManualTransform>();
+    m_leftForearm = std::make_shared<RobotsViz::VtkObject>(RobotsViz::MeshResources("sim_icub3_l_forearm_prt.obj"), m_leftForearmTrasform,
+                                                                                            std::tuple<double, double, double>({m_settings.handColor(0), m_settings.handColor(1), m_settings.handColor(2)}),
+                                                                                            m_settings.handOpacity);
+
+    m_rightForearmTrasform = std::make_shared<RobotsIO::Utils::ManualTransform>();
+    m_rightForearm = std::make_shared<RobotsViz::VtkObject>(RobotsViz::MeshResources("sim_icub3_r_forearm_prt.obj"), m_rightForearmTrasform,
+                                                                                            std::tuple<double, double, double>({m_settings.handColor(0), m_settings.handColor(1), m_settings.handColor(2)}),
+                                                                                            m_settings.handOpacity);
+
+    if (!m_leftEye.addContents({{"left_hand", m_leftHand}, {"right_hand", m_rightHand}, {"l_forearm", m_leftForearm}, {"r_forearm", m_rightForearm}}))
     {
         return false;
     }
 
-    if (!m_rightEye.addContents({{"left_hand", m_leftHand}, {"right_hand", m_rightHand}}))
+    if (!m_rightEye.addContents({{"left_hand", m_leftHand}, {"right_hand", m_rightHand}, {"l_forearm", m_leftForearm}, {"r_forearm", m_rightForearm}}))
     {
         return false;
     }
@@ -117,6 +127,8 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
         return false;
     }
 
+    m_leftForearmTrasform->set_transform(m_leftForearmTrasform->transform().translate(Eigen::Vector3d({1.0, 0.05, 0.0})));
+    m_rightForearmTrasform->set_transform(m_rightForearmTrasform->transform().translate(Eigen::Vector3d({1.0, -0.05, 0.0})));
 
     //Initial transforms
     m_leftTransform << 0.0,  0.0,  1.0, 1.0,
@@ -138,6 +150,12 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
     m_rightTransformYarp.resize(4,4);
     m_rightTransformYarp.eye();
 
+    m_leftForearmTransformYarp.resize(4,4);
+    m_leftForearmTransformYarp.eye();
+
+    m_rightForearmTransformYarp.resize(4,4);
+    m_rightForearmTransformYarp.eye();
+
     std::string rpcPortName = "/" + m_settings.name + "/rpc";
     this->yarp().attachAsServer(this->m_rpcPort);
     if(!m_rpcPort.open(rpcPortName))
@@ -151,17 +169,22 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
 
 bool HandsVisualizer::update()
 {
-    std::string leftFrame, rightFrame, headFrame;
-    bool blocking;
-    Eigen::Matrix4d leftFrameToHand, rightFrameToHand;
+    std::string leftFrame, rightFrame, leftForearmFrame, rightForearmFrame, headFrame;
+    bool blocking, viewForearms;
+    Eigen::Matrix4d leftFrameToHand, rightFrameToHand, leftForearmMesh, rightForearmMesh;
     {
         std::lock_guard<std::mutex> lock(m_settings.mutex);
-        leftFrame = m_settings.left_frame;
-        rightFrame = m_settings.right_frame;
+        leftFrame = m_settings.left_hand_frame;
+        rightFrame = m_settings.right_hand_frame;
         headFrame = m_settings.head_frame;
+        leftForearmFrame = m_settings.left_forearm_frame;
+        rightForearmFrame = m_settings.right_forearm_frame;
         blocking = m_settings.blocking;
         leftFrameToHand = m_settings.leftFrameToHand;
         rightFrameToHand = m_settings.rightFrameToHand;
+        viewForearms = m_settings.view_forearms;
+        leftForearmMesh = m_settings.leftForearmMeshTransform;
+        rightForearmMesh = m_settings.rightForearmMeshTransform;
     }
 
     if (m_iframetrans)
@@ -181,6 +204,25 @@ bool HandsVisualizer::update()
                 m_rightTransform = toEigen(m_rightTransformYarp) * rightFrameToHand;
             }
         }
+
+        if (viewForearms)
+        {
+            if (m_iframetrans->canTransform(leftForearmFrame, headFrame))
+            {
+                if (m_iframetrans->getTransform(leftForearmFrame, headFrame, m_leftForearmTransformYarp))
+                {
+                    m_leftForearmTrasform->set_transform(Eigen::Transform<double, 3, Eigen::Affine>(toEigen(m_leftForearmTransformYarp) * leftForearmMesh));
+                }
+            }
+
+            if (m_iframetrans->canTransform(rightForearmFrame, headFrame))
+            {
+                if (m_iframetrans->getTransform(rightForearmFrame, headFrame, m_rightForearmTransformYarp))
+                {
+                    m_rightForearmTrasform->set_transform(Eigen::Transform<double, 3, Eigen::Affine>(toEigen(m_rightForearmTransformYarp) * rightForearmMesh));
+                }
+            }
+        }
     }
 
     {
@@ -190,6 +232,8 @@ bool HandsVisualizer::update()
 
         m_leftHand->update(blocking);
         m_rightHand->update(blocking);
+        m_leftForearm->update(blocking);
+        m_rightForearm->update(blocking);
     }
 
     {
@@ -246,6 +290,8 @@ bool HandsVisualizer::setHandColor(const double r, const double g, const double 
     std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex), lockHands(m_handsMutex);
     m_leftHand->setColor({r, g, b});
     m_rightHand->setColor({r, g, b});
+    m_leftForearm->set_color({r, g, b});
+    m_rightForearm->set_color({r, g, b});
     m_settings.handColor = {r, g, b};
     return true;
 }
@@ -255,6 +301,8 @@ bool HandsVisualizer::setHandOpacity(const double opacity)
     std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex), lockHands(m_handsMutex);
     m_leftHand->setOpacity(opacity);
     m_rightHand->setOpacity(opacity);
+    m_leftForearm->set_opacity(opacity);
+    m_rightForearm->set_opacity(opacity);
     m_settings.handOpacity = opacity;
     return true;
 }
@@ -318,6 +366,17 @@ bool HandsVisualizer::setRightFrameToHandQuaternion(const double w, const double
     std::lock_guard<std::mutex> lockSettings(m_settings.mutex);
 
     m_settings.rightFrameToHand.block<3,3>(0, 0) = Eigen::Quaterniond(w, x, y, z).toRotationMatrix();
+
+    return true;
+}
+
+bool HandsVisualizer::setForearmsVisibility(const bool visible)
+{
+    std::lock_guard<std::mutex> lockSettings(m_settings.mutex), lockEyes(m_eyesMutex), lockHands(m_handsMutex);
+
+    m_leftForearm->set_visibility(visible);
+    m_rightForearm->set_visibility(visible);
+    m_settings.view_forearms = visible;
 
     return true;
 }
@@ -480,9 +539,12 @@ void HandsVisualizer::Settings::parse(const yarp::os::Searchable &rf)
     use_fingers = rf.check("use_fingers") && (rf.find("use_fingers").isNull() || rf.find("use_fingers").asBool());
     use_analogs = rf.check("use_analogs") && (rf.find("use_analogs").isNull() || rf.find("use_analogs").asBool());
     filterAbduction = rf.check("filter_abduction") && (rf.find("filter_abduction").isNull() || rf.find("filter_abduction").asBool());
+    view_forearms = rf.check("view_forearms") && (rf.find("view_forearms").isNull() || rf.find("view_forearms").asBool());
     head_frame = rf.check("head_frame", yarp::os::Value("head")).asString();
-    left_frame = rf.check("left_frame", yarp::os::Value("l_hand")).asString();
-    right_frame = rf.check("right_frame", yarp::os::Value("r_hand")).asString();
+    left_hand_frame = rf.check("left_hand_frame", yarp::os::Value("l_hand")).asString();
+    right_hand_frame = rf.check("right_hand_frame", yarp::os::Value("r_hand")).asString();
+    left_forearm_frame = rf.check("left_forearm_frame", yarp::os::Value("l_forearm")).asString();
+    right_forearm_frame = rf.check("right_forearm_frame", yarp::os::Value("r_forearm")).asString();
     viewAngle = rf.check("view_angle", yarp::os::Value(85.0)).asFloat64();
     fps = rf.check("desired_fps", yarp::os::Value(30.0)).asFloat64();
     handOpacity = rf.check("hand_opacity", yarp::os::Value(1.0)).asFloat64();
@@ -502,6 +564,14 @@ void HandsVisualizer::Settings::parse(const yarp::os::Searchable &rf)
     rightFrameToHand.block<3,1>(0, 3) = parse3DVector(rf, "right_frame_to_hand_offset", {-0.002, 0.018, -0.059});
     leftFrameToHand.block<3,3>(0, 0) = parseQuaternion(rf, "left_frame_to_hand_quaternion_wxyz", Eigen::Quaterniond(-0.5, 0.5, -0.5, -0.5)).matrix();
     rightFrameToHand.block<3,3>(0, 0) = parseQuaternion(rf, "right_frame_to_hand_quaternion_wxyz", Eigen::Quaterniond(-0.5, 0.5, -0.5, -0.5)).matrix();
+
+    //The following offsets have been obtained from the URDF of iCubGazeboV3
+    leftForearmMeshTransform.setIdentity();
+    rightForearmMeshTransform.setIdentity();
+    leftForearmMeshTransform.block<3,1>(0, 3) = parse3DVector(rf, "left_forearm_mesh_offset", {0.03574308828413966, -0.14114024168831188, 0.27323486219617454});
+    rightForearmMeshTransform.block<3,1>(0, 3) = parse3DVector(rf, "right_forearm_mesh_offset", {0.03574306124487927, 0.14114026712657127, 0.27323485259309493});
+    leftForearmMeshTransform.block<3,3>(0, 0) = parseQuaternion(rf, "left_forearm_mesh_quaternion_wxyz", Eigen::Quaterniond(0.7887826, -0.1163855, -0.0557073, -0.6009768)).matrix();
+    rightForearmMeshTransform.block<3,3>(0, 0) = parseQuaternion(rf, "right_forearm_mesh_quaternion_wxyz", Eigen::Quaterniond(0.6009768, 0.0557073, 0.1163854, -0.7887826)).matrix();
 }
 
 std::string HandsVisualizer::Settings::toString(size_t indentation)
@@ -531,9 +601,12 @@ std::string HandsVisualizer::Settings::toString(size_t indentation)
     optionsOut << indentationString << "use_fingers " << use_fingers << std::endl;
     optionsOut << indentationString << "use_analogs " << use_analogs << std::endl;
     optionsOut << indentationString << "filter_abduction " << filterAbduction << std::endl;
+    optionsOut << indentationString << "view_forearms " << view_forearms << std::endl;
     optionsOut << indentationString << "head_frame " << head_frame << std::endl;
-    optionsOut << indentationString << "left_frame " << left_frame << std::endl;
-    optionsOut << indentationString << "right_frame " << right_frame << std::endl;
+    optionsOut << indentationString << "left_hand_frame " << left_hand_frame << std::endl;
+    optionsOut << indentationString << "right_hand_frame " << right_hand_frame << std::endl;
+    optionsOut << indentationString << "left_forearm_frame " << left_forearm_frame << std::endl;
+    optionsOut << indentationString << "right_forearm_frame " << right_forearm_frame << std::endl;
     optionsOut << indentationString << "view_angle " << viewAngle << std::endl;
     optionsOut << indentationString << "desired_fps " << fps << std::endl;
     optionsOut << indentationString << "hand_opacity " << handOpacity << std::endl;
@@ -550,5 +623,9 @@ std::string HandsVisualizer::Settings::toString(size_t indentation)
     optionsOut << indentationString << "right_frame_to_hand_offset " << vecToString(rightFrameToHand.block<3,1>(0, 3)) << std::endl;
     optionsOut << indentationString << "left_frame_to_hand_quaternion_wxyz " << quatToString(Eigen::Quaterniond(leftFrameToHand.block<3,3>(0, 0))) << std::endl;
     optionsOut << indentationString << "right_frame_to_hand_quaternion_wxyz " << quatToString(Eigen::Quaterniond(rightFrameToHand.block<3,3>(0, 0))) << std::endl;
+    optionsOut << indentationString << "left_forearm_mesh_offset " << vecToString(leftForearmMeshTransform.block<3,1>(0, 3)) << std::endl;
+    optionsOut << indentationString << "right_forearm_mesh_offset " << vecToString(rightForearmMeshTransform.block<3,1>(0, 3)) << std::endl;
+    optionsOut << indentationString << "left_forearm_mesh_quaternion_wxyz " << quatToString(Eigen::Quaterniond(leftForearmMeshTransform.block<3,3>(0, 0))) << std::endl;
+    optionsOut << indentationString << "right_forearm_mesh_quaternion_wxyz " << quatToString(Eigen::Quaterniond(rightForearmMeshTransform.block<3,3>(0, 0))) << std::endl;
     return optionsOut.str();
 }

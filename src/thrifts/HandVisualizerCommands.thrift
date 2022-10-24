@@ -60,6 +60,13 @@ service HandVisualizerCommands
     bool setRightFrameToHandQuaternion(1:double w, 2:double x, 3:double y, 4:double z);
 
     /**
+     * Set the visibility of the forearms.
+     * If the input boolean is true, the forearms are visible. Invisible if 0.
+     * @return true/false in case of success/failure.
+     */
+    bool setForearmsVisibility(1:bool visible)
+
+    /**
      * Prints the settings
      * @return A string that can be copied in a configuration file,
      *         including the modifications set from RPC
