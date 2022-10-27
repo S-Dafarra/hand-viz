@@ -63,6 +63,7 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
     leftSettings.forwardDirection = m_settings.forwardDirection;
     leftSettings.upDirection = m_settings.upDirection;
     leftSettings.viewAngle = m_settings.viewAngle;
+    leftSettings.offscreen = m_settings.offscreen;
 
     rightSettings = leftSettings;
     rightSettings.cameraPosition = m_settings.headToRightEye;
@@ -593,6 +594,7 @@ void HandsVisualizer::Settings::parse(const yarp::os::Searchable &rf)
     robot_name = rf.check("robot", yarp::os::Value("icub")).asString();
     name = rf.check("name", yarp::os::Value("hand-visualizer")).asString();
     blocking = rf.check("blocking") && (rf.find("blocking").isNull() || rf.find("blocking").asBool());
+    offscreen = rf.check("offscreen") && (rf.find("offscreen").isNull() || rf.find("offscreen").asBool());
     use_fingers = rf.check("use_fingers") && (rf.find("use_fingers").isNull() || rf.find("use_fingers").asBool());
     use_analogs = rf.check("use_analogs") && (rf.find("use_analogs").isNull() || rf.find("use_analogs").asBool());
     use_analogs_bounds = rf.check("use_analogs_bounds") && (rf.find("use_analogs_bounds").isNull() || rf.find("use_analogs_bounds").asBool());
@@ -673,6 +675,7 @@ std::string HandsVisualizer::Settings::toString(size_t indentation)
     optionsOut << indentationString << "name " << name << std::endl;
     optionsOut << indentationString << "robot " << robot_name << std::endl;
     optionsOut << indentationString << "blocking " << blocking << std::endl;
+    optionsOut << indentationString << "offscreen " << offscreen << std::endl;
     optionsOut << indentationString << "use_fingers " << use_fingers << std::endl;
     optionsOut << indentationString << "use_analogs " << use_analogs << std::endl;
     optionsOut << indentationString << "use_analogs_bounds " << use_analogs_bounds << std::endl;

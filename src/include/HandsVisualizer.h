@@ -45,6 +45,7 @@ class HandsVisualizer : public HandVisualizerCommands
         std::string robot_name;
         std::string name;
         bool blocking;
+        bool offscreen;
         bool use_fingers;
         bool use_analogs;
         bool use_analogs_bounds;

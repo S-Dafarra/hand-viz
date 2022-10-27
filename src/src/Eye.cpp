@@ -161,7 +161,10 @@ bool Eye::prepareVisualization()
     m_vtkContainer->initialize();
     m_vtkContainer->setOrientationWidgetEnabled(false);
     m_vtkContainer->render_window()->SetAlphaBitPlanes(1);
-    //    m_vtkContainer->render_window()->SetOffScreenRendering(1); //This would be needed to avoid the windows to appear, but it seems not properly supported on Linux
+    if (m_settings.offscreen)
+    {
+        m_vtkContainer->render_window()->SetOffScreenRendering(1);
+    }
     m_vtkContainer->renderer()->SetBackground(std::get<0>(m_settings.backgroundColor),
                                               std::get<1>(m_settings.backgroundColor),
                                               std::get<2>(m_settings.backgroundColor));

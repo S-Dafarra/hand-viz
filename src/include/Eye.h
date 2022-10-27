@@ -30,6 +30,7 @@ public:
         unsigned int width{600};
         unsigned int height{600};
         bool blocking{false};
+        bool offscreen{false};
         std::tuple<double, double, double> backgroundColor{0,0,0};
         Eigen::Vector3d cameraPosition = Eigen::Vector3d::Zero();
         Eigen::Vector3d forwardDirection = Eigen::Vector3d::UnitX();
