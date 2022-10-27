@@ -137,25 +137,31 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
         return false;
     }
 
-    m_leftForearmTrasform->set_transform(m_leftForearmTrasform->transform().translate(Eigen::Vector3d({1.0, 0.05, 0.0})));
-    m_rightForearmTrasform->set_transform(m_rightForearmTrasform->transform().translate(Eigen::Vector3d({1.0, -0.05, 0.0})));
-
     m_leftForearm->set_visibility(m_settings.view_forearms);
     m_rightForearm->set_visibility(m_settings.view_forearms);
 
     //Initial transforms
     m_leftTransform << 0.0,  0.0,  1.0, 1.0,
-                       0.0, -1.0,  0.0, 0.05,
+                       0.0, -1.0,  0.0, 0.07,
                        1.0,  0.0,  0.0, 0.0,
                        0.0,  0.0,  0.0, 1.0;
     m_leftHand->setTransform(m_leftTransform);
 
+    Eigen::Transform<double, 3, Eigen::Affine> leftForearmInitialTransform(m_leftTransform * m_settings.leftFrameToHand.inverse());
+    leftForearmInitialTransform.translate(Eigen::Vector3d({0.0, 0.005, 0.11}));
+    leftForearmInitialTransform = leftForearmInitialTransform * m_settings.leftForearmMeshTransform;
+    m_leftForearmTrasform->set_transform(leftForearmInitialTransform);
+
     m_rightTransform << 0.0,  0.0, -1.0,  1.0,
-                        0.0,  1.0,  0.0, -0.05,
+                        0.0,  1.0,  0.0, -0.07,
                         1.0,  0.0,  0.0,  0.0,
                         0.0,  0.0,  0.0,  1.0;
     m_rightHand->setTransform(m_rightTransform);
 
+    Eigen::Transform<double, 3, Eigen::Affine> rightForearmInitialTransform(m_rightTransform * m_settings.rightFrameToHand.inverse());
+    rightForearmInitialTransform.translate(Eigen::Vector3d({0.0, 0.005, 0.11}));
+    rightForearmInitialTransform = rightForearmInitialTransform * m_settings.rightForearmMeshTransform;
+    m_rightForearmTrasform->set_transform(rightForearmInitialTransform);
 
     m_leftTransformYarp.resize(4,4);
     m_leftTransformYarp.eye();
