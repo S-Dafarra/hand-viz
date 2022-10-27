@@ -9,14 +9,18 @@
 
 set(EXE_TARGET_NAME icub-hand-viz)
 
+# Force the use of YARP and ICUB
+set(USE_YARP ON CACHE INTERNAL "Use YARP")
+set(USE_ICUB ON CACHE INTERNAL "Use ICUB")
+
 option(USE_SYSTEM_RobotsIO OFF)
 if(USE_SYSTEM_RobotsIO)
-   find_package(RobotsIO REQUIRED)
+find_package(RobotsIO REQUIRED)
 else()
   include(FetchContent)
   FetchContent_Declare(RobotsIO
     GIT_REPOSITORY https://github.com/S-Dafarra/robots-io
-    GIT_TAG 2dfe590e3b0501387ed8dedc31b4339eb36474a7)
+    GIT_TAG 9ce19d43f4c779e05f99643882d66f6dd65c19f8)
 
   FetchContent_GetProperties(RobotsIO)
   if(NOT RobotsIO_POPULATED)
@@ -32,7 +36,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(RobotsViz
     GIT_REPOSITORY https://github.com/S-Dafarra/robots-viz
-    GIT_TAG 4c3c472fd69b9c066feaea032d9f15f867db2b93)
+    GIT_TAG f6a6cb10a70546a864e0ae74ec72578478b82200)
 
   FetchContent_GetProperties(RobotsViz)
   if(NOT RobotsViz_POPULATED)
@@ -40,9 +44,6 @@ else()
     FetchContent_MakeAvailable(RobotsViz)
   endif()
 endif()
-
-
-find_package(RobotsViz REQUIRED)
 
 find_package(YARP REQUIRED COMPONENTS
              cv    # seems that RobotsIO export is not working on Ubuntu18.04
