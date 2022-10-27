@@ -20,7 +20,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(RobotsIO
     GIT_REPOSITORY https://github.com/S-Dafarra/robots-io
-    GIT_TAG 9ce19d43f4c779e05f99643882d66f6dd65c19f8)
+    GIT_TAG ed0481a49143f83d599433d1310c00c80e75bad3)
 
   FetchContent_GetProperties(RobotsIO)
   if(NOT RobotsIO_POPULATED)
