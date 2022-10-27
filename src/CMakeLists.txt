@@ -9,11 +9,17 @@
 
 set(EXE_TARGET_NAME icub-hand-viz)
 
-# Force the use of YARP and ICUB
+# Force the use of YARP and ICUB in RobotsIO and RobotsViz
 set(USE_YARP ON CACHE INTERNAL "Use YARP")
 set(USE_ICUB ON CACHE INTERNAL "Use ICUB")
 
-option(USE_SYSTEM_RobotsIO OFF)
+find_package(RobotsIO QUIET)
+find_package(RobotsViz QUIET)
+
+include(CMakeDependentOption)
+cmake_dependent_option(USE_SYSTEM_RobotsIO "Use system version of RobotsIO" ON "RobotsIO_FOUND" OFF)
+cmake_dependent_option(USE_SYSTEM_RobotsViz "Use system version of RobotsViz" ON "RobotsViz_FOUND" OFF)
+
 if(USE_SYSTEM_RobotsIO)
 find_package(RobotsIO REQUIRED)
 else()
@@ -29,7 +35,6 @@ else()
   endif()
 endif()
 
-option(USE_SYSTEM_RobotsViz OFF)
 if(USE_SYSTEM_RobotsViz)
    find_package(RobotsViz REQUIRED)
 else()
