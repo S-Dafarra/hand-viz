@@ -9,7 +9,7 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(RobotsModules
+project(HandsVisualizer
         LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 11)
@@ -36,6 +36,13 @@ if(WIN32)
     endif()
 endif()
 
+# Enable RPATH support for installed binaries and libraries
+include(AddInstallRPATHSupport)
+add_install_rpath_support(BIN_DIRS "${CMAKE_INSTALL_FULL_BINDIR}"
+                          LIB_DIRS "${CMAKE_INSTALL_FULL_LIBDIR}"
+                          INSTALL_NAME_DIR "${CMAKE_INSTALL_FULL_LIBDIR}"
+                          USE_LINK_PATH)
+
 # Default build type to Release
 if(NOT CMAKE_CONFIGURATION_TYPES)
     if(NOT CMAKE_BUILD_TYPE)
@@ -45,3 +52,5 @@ if(NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 add_subdirectory(src)
+
+include(AddUninstallTarget)
