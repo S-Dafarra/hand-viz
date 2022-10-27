@@ -78,14 +78,24 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
         return false;
     }
 
-    /* Show hand according to forward kinematics. */
+    yarp::sig::Matrix leftAnalogBounds;
+    leftAnalogBounds.resize(15,2);
+    leftAnalogBounds.zero();
+    leftAnalogBounds.setCol(0, m_settings.left_analog_upper_bounds);
+    leftAnalogBounds.setCol(1, m_settings.left_analog_lower_bounds);
+
+    yarp::sig::Matrix rightAnalogBounds;
+    rightAnalogBounds.resize(15,2);
+    rightAnalogBounds.zero();
+    rightAnalogBounds.setCol(0, m_settings.right_analog_upper_bounds);
+    rightAnalogBounds.setCol(1, m_settings.right_analog_lower_bounds);
 
     m_leftHand = std::make_shared<RobotsViz::VtkiCubHand>(m_settings.robot_name, "left", m_settings.name + "/hand_fk/left", m_settings.use_fingers, m_settings.use_analogs,
                                                         std::tuple<double, double, double>({m_settings.handColor(0), m_settings.handColor(1), m_settings.handColor(2)}),
-                                                        m_settings.handOpacity, !m_settings.filterAbduction);
+                                                        m_settings.handOpacity, m_settings.use_analogs_bounds, leftAnalogBounds, !m_settings.filterAbduction);
     m_rightHand = std::make_shared<RobotsViz::VtkiCubHand>(m_settings.robot_name, "right", m_settings.name + "/hand_fk/right", m_settings.use_fingers, m_settings.use_analogs,
                                                          std::tuple<double, double, double>({m_settings.handColor(0), m_settings.handColor(1), m_settings.handColor(2)}),
-                                                         m_settings.handOpacity, !m_settings.filterAbduction);
+                                                         m_settings.handOpacity, m_settings.use_analogs_bounds, rightAnalogBounds, !m_settings.filterAbduction);
 
     m_leftForearmTrasform = std::make_shared<RobotsIO::Utils::ManualTransform>();
     m_leftForearm = std::make_shared<RobotsViz::VtkObject>(RobotsViz::MeshResources("sim_icub3_l_forearm_prt.obj"), m_leftForearmTrasform,
@@ -534,6 +544,44 @@ Eigen::Quaterniond HandsVisualizer::Settings::parseQuaternion(const yarp::os::Se
     return output;
 }
 
+void HandsVisualizer::Settings::parseAnalogBounds(const yarp::os::Searchable &rf, const std::string &key, yarp::sig::Vector &output, size_t size, double defaultValue)
+{
+    yarp::sig::Vector defaultVector(size, defaultValue);
+    output = defaultVector;
+    if (!rf.check(key))
+    {
+        return;
+    }
+
+    yarp::os::Value& value = rf.find(key);
+
+    if (!value.isList())
+    {
+        yWarning() << key << "found in the configuration parameters, but it is not a list. Using default value.";
+        return;
+    }
+
+    yarp::os::Bottle* list = value.asList();
+
+    if (list->size() != size)
+    {
+        yWarning() << key << "found in the configuration parameters, but it is not a list with" << size << "elements. Using default value.";
+        return;
+    }
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (!list->get(i).isFloat64() && !list->get(i).isInt32() && !list->get(i).isInt64())
+        {
+            yWarning() << "The element of" << key << "at position" << i << "is not numeric. Using default value.";
+        }
+        else
+        {
+            output(i) = list->get(i).asFloat64();
+        }
+    }
+}
+
 void HandsVisualizer::Settings::parse(const yarp::os::Searchable &rf)
 {
     robot_name = rf.check("robot", yarp::os::Value("icub")).asString();
@@ -541,6 +589,7 @@ void HandsVisualizer::Settings::parse(const yarp::os::Searchable &rf)
     blocking = rf.check("blocking") && (rf.find("blocking").isNull() || rf.find("blocking").asBool());
     use_fingers = rf.check("use_fingers") && (rf.find("use_fingers").isNull() || rf.find("use_fingers").asBool());
     use_analogs = rf.check("use_analogs") && (rf.find("use_analogs").isNull() || rf.find("use_analogs").asBool());
+    use_analogs_bounds = rf.check("use_analogs_bounds") && (rf.find("use_analogs_bounds").isNull() || rf.find("use_analogs_bounds").asBool());
     filterAbduction = rf.check("filter_abduction") && (rf.find("filter_abduction").isNull() || rf.find("filter_abduction").asBool());
     view_forearms = rf.check("view_forearms") && (rf.find("view_forearms").isNull() || rf.find("view_forearms").asBool());
     head_frame = rf.check("head_frame", yarp::os::Value("head")).asString();
@@ -575,6 +624,11 @@ void HandsVisualizer::Settings::parse(const yarp::os::Searchable &rf)
     rightForearmMeshTransform.block<3,1>(0, 3) = parse3DVector(rf, "right_forearm_mesh_offset", {0.03574306124487927, 0.14114026712657127, 0.27323485259309493});
     leftForearmMeshTransform.block<3,3>(0, 0) = parseQuaternion(rf, "left_forearm_mesh_quaternion_wxyz", Eigen::Quaterniond(0.7887826, -0.1163855, -0.0557073, -0.6009768)).matrix();
     rightForearmMeshTransform.block<3,3>(0, 0) = parseQuaternion(rf, "right_forearm_mesh_quaternion_wxyz", Eigen::Quaterniond(0.6009768, 0.0557073, 0.1163854, -0.7887826)).matrix();
+
+    parseAnalogBounds(rf, "left_analog_lower_bounds", left_analog_lower_bounds, 15, 0);
+    parseAnalogBounds(rf, "left_analog_upper_bounds", left_analog_upper_bounds, 15, 255);
+    parseAnalogBounds(rf, "right_analog_lower_bounds", right_analog_lower_bounds, 15, 0);
+    parseAnalogBounds(rf, "right_analog_upper_bounds", right_analog_upper_bounds, 15, 255);
 }
 
 std::string HandsVisualizer::Settings::toString(size_t indentation)
@@ -593,6 +647,18 @@ std::string HandsVisualizer::Settings::toString(size_t indentation)
         return output.str();
     };
 
+    auto yarpVecToString = [](const yarp::sig::Vector& input) -> std::string
+    {
+        std::stringstream output;
+        output << "\"(";
+        for (size_t i = 0; i < input.size()-1; ++i)
+        {
+            output << input(i) << ", ";
+        }
+        output << *input.cbegin() << ")\"";
+        return output.str();
+    };
+
     std::string indentationString(indentation, ' ');
 
 
@@ -603,6 +669,11 @@ std::string HandsVisualizer::Settings::toString(size_t indentation)
     optionsOut << indentationString << "blocking " << blocking << std::endl;
     optionsOut << indentationString << "use_fingers " << use_fingers << std::endl;
     optionsOut << indentationString << "use_analogs " << use_analogs << std::endl;
+    optionsOut << indentationString << "use_analogs_bounds " << use_analogs_bounds << std::endl;
+    optionsOut << indentationString << "left_analog_lower_bounds " << yarpVecToString(left_analog_lower_bounds) << std::endl;
+    optionsOut << indentationString << "left_analog_upper_bounds " << yarpVecToString(left_analog_upper_bounds) << std::endl;
+    optionsOut << indentationString << "right_analog_lower_bounds " << yarpVecToString(right_analog_lower_bounds) << std::endl;
+    optionsOut << indentationString << "right_analog_upper_bounds " << yarpVecToString(right_analog_upper_bounds) << std::endl;
     optionsOut << indentationString << "filter_abduction " << filterAbduction << std::endl;
     optionsOut << indentationString << "view_forearms " << view_forearms << std::endl;
     optionsOut << indentationString << "head_frame " << head_frame << std::endl;

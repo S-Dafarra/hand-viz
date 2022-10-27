@@ -38,6 +38,8 @@ class HandsVisualizer : public HandVisualizerCommands
 
         Eigen::Quaterniond parseQuaternion(const yarp::os::Searchable& rf, const std::string& key, const Eigen::Quaterniond& defaultValue);
 
+        void parseAnalogBounds(const yarp::os::Searchable& rf, const std::string& key, yarp::sig::Vector& output, size_t size, double defaultValue);
+
     public:
         std::mutex mutex;
         std::string robot_name;
@@ -45,6 +47,11 @@ class HandsVisualizer : public HandVisualizerCommands
         bool blocking;
         bool use_fingers;
         bool use_analogs;
+        bool use_analogs_bounds;
+        yarp::sig::Vector left_analog_lower_bounds;
+        yarp::sig::Vector left_analog_upper_bounds;
+        yarp::sig::Vector right_analog_lower_bounds;
+        yarp::sig::Vector right_analog_upper_bounds;
         bool filterAbduction;
         bool view_forearms;
         std::string head_frame;

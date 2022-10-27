@@ -26,7 +26,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(RobotsIO
     GIT_REPOSITORY https://github.com/S-Dafarra/robots-io
-    GIT_TAG ed0481a49143f83d599433d1310c00c80e75bad3)
+    GIT_TAG 015db7085540bcc14dfb9ee9daa0578ac1d7dbc1)
 
   FetchContent_GetProperties(RobotsIO)
   if(NOT RobotsIO_POPULATED)
@@ -41,7 +41,7 @@ else()
   include(FetchContent)
   FetchContent_Declare(RobotsViz
     GIT_REPOSITORY https://github.com/S-Dafarra/robots-viz
-    GIT_TAG f6a6cb10a70546a864e0ae74ec72578478b82200)
+    GIT_TAG dbc0e522dbbd1e9a74f25432874ad626ab64d264)
 
   FetchContent_GetProperties(RobotsViz)
   if(NOT RobotsViz_POPULATED)
