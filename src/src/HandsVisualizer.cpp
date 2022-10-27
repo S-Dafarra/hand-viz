@@ -130,6 +130,9 @@ bool HandsVisualizer::configure(const yarp::os::ResourceFinder &rf)
     m_leftForearmTrasform->set_transform(m_leftForearmTrasform->transform().translate(Eigen::Vector3d({1.0, 0.05, 0.0})));
     m_rightForearmTrasform->set_transform(m_rightForearmTrasform->transform().translate(Eigen::Vector3d({1.0, -0.05, 0.0})));
 
+    m_leftForearm->set_visibility(m_settings.view_forearms);
+    m_rightForearm->set_visibility(m_settings.view_forearms);
+
     //Initial transforms
     m_leftTransform << 0.0,  0.0,  1.0, 1.0,
                        0.0, -1.0,  0.0, 0.05,
